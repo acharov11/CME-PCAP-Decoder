@@ -62,51 +62,73 @@ public:
         PcapPacketHeader pcap_header;
         input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
 
+
         cout << "\nPCAP Packet Header:" << endl;
-        cout << "Timestamp: " << pcap_header.ts_sec << "." << setfill('0') << setw(6) << pcap_header.ts_usec << endl;
+        cout << "Timestamp: " << pcap_header.ts_sec << "."
+             << setfill('0') << setw(6) << pcap_header.ts_usec << endl;
         cout << "Captured Length: " << pcap_header.incl_len << " bytes" << endl;
         cout << "Original Length: " << pcap_header.orig_len << " bytes" << endl;
-
-        // From Wireshark, we can see UDP payload length is 22 bytes
-        // Verify this matches: incl_len - (Ethernet + IP + UDP headers) = 64 - 42 = 22 bytes
         cout << "UDP Payload Length: " << (pcap_header.incl_len - 42) << " bytes" << endl;
 
         // Skip network headers (Ethernet + IP + UDP = 42 bytes)
         input_file.ignore(42);
 
         // Read and display the raw UDP payload bytes
-        vector<char> payload(pcap_header.incl_len - 42);
-        input_file.read(payload.data(), pcap_header.incl_len - 42);
+        vector<uint8_t> payload(pcap_header.incl_len - 42);
+        input_file.read(reinterpret_cast<char*>(payload.data()), pcap_header.incl_len - 42);
 
         cout << "\nRaw UDP Payload (hex):" << endl;
         for(size_t i = 0; i < payload.size(); i++) {
             cout << hex << setfill('0') << setw(2)
-                 << (static_cast<int>(payload[i]) & 0xFF) << " ";
+                 << static_cast<int>(payload[i]) << " ";
             if((i + 1) % 16 == 0) cout << endl;
         }
-        cout << dec << endl; // Reset to decimal output
-        // Skip network headers (Ethernet + IP + UDP = 42 bytes)
-        input_file.ignore(42);
+        cout << dec << endl;
 
-        // Read CME packet header
-        CMEPacketHeader cme_header;
-        input_file.read(reinterpret_cast<char*>(&cme_header), sizeof(CMEPacketHeader));
+        // Parse CME packet header (first 8 bytes)
+        if (payload.size() >= 8) {
+            // First 4 bytes: sequence number
+            uint32_t seq_num = 0;
+            seq_num |= static_cast<uint32_t>(payload[0]);
+            seq_num |= static_cast<uint32_t>(payload[1]) << 8;
+            seq_num |= static_cast<uint32_t>(payload[2]) << 16;
+            seq_num |= static_cast<uint32_t>(payload[3]) << 24;
 
-        cout << "\nCME Packet Header:" << endl;
-        cout << "Sequence number: " << cme_header.sequence_number << endl;
-        cout << "Sending time: " << cme_header.sending_time << endl;
+            // Next 4 bytes: sending time
+            uint32_t send_time = 0;
+            send_time |= static_cast<uint32_t>(payload[4]);
+            send_time |= static_cast<uint32_t>(payload[5]) << 8;
+            send_time |= static_cast<uint32_t>(payload[6]) << 16;
+            send_time |= static_cast<uint32_t>(payload[7]) << 24;
 
-        // Read first CME message header
-        CMEMessageHeader msg_header;
-        input_file.read(reinterpret_cast<char*>(&msg_header), sizeof(CMEMessageHeader));
+            cout << "\nCME Packet Header (corrected):" << endl;
+            cout << "Sequence number: 0x" << hex << setfill('0') << setw(8) << seq_num << dec << endl;
+            cout << "Sending time: 0x" << hex << setfill('0') << setw(8) << send_time << dec << endl;
 
-        cout << "\nCME Message Header:" << endl;
-        cout << "Message size: " << msg_header.message_size << endl;
-        cout << "Template ID: " << msg_header.template_id << endl;
-        cout << "Schema ID: " << msg_header.schema_id << endl;
-        cout << "Version: " << msg_header.version << endl;
+            // Looking at payload -- my example:
+            // 85 01 00 00 - Sequence number should be 0x00000185
+            // c4 04 eb 4b - Sending time should be 0x4beb04c4
 
+            // Parse CME message header (next 8 bytes)
+            if (payload.size() >= 16) {
+                uint32_t msg_size = 0;
+                msg_size |= static_cast<uint32_t>(payload[8]);
+                msg_size |= static_cast<uint32_t>(payload[9]) << 8;
+                msg_size |= static_cast<uint32_t>(payload[10]) << 16;
+                msg_size |= static_cast<uint32_t>(payload[11]) << 24;
 
+                uint32_t template_id = 0;
+                template_id |= static_cast<uint32_t>(payload[12]);
+                template_id |= static_cast<uint32_t>(payload[13]) << 8;
+                template_id |= static_cast<uint32_t>(payload[14]) << 16;
+                template_id |= static_cast<uint32_t>(payload[15]) << 24;
+
+                cout << "\nCME Message Header:" << endl;
+                cout << "Message size: " << msg_size << endl;
+                cout << "Template ID: " << template_id << endl;
+            }
+
+        }
 
         input_file.close();
     }
