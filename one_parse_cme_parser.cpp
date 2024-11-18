@@ -134,14 +134,18 @@ public:
     }
 };
 
-int main() {
-    try {
-        string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
-        CMEParser parser(input_file);
-        parser.parse_first_packet();
-    } catch (const exception& e) {
-        cerr << "Error: " << e.what() << endl;
-        return 1;
-    }
-    return 0;
-}
+// int main() {
+//     try {
+//         string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
+//
+//         // string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
+//         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
+//
+//         CMEParser parser(input_file);
+//         parser.parse_first_packet();
+//     } catch (const exception& e) {
+//         cerr << "Error: " << e.what() << endl;
+//         return 1;
+//     }
+//     return 0;
+// }

@@ -151,7 +151,7 @@ private:
         if (input_file.eof()) return false;
 
 
-        DEBUG_PRINT("Skipping network header...");
+        // DEBUG_PRINT("Skipping network header...");
         // Skip network headers
         input_file.ignore(42);
 
@@ -165,6 +165,7 @@ private:
 
     // Process individual CME packet
     void process_cme_packet(const vector<char>& packet_data) {
+        // DEBUG_PRINT("process cme packet");
         CMEPacketHeader pkt_header;
         memcpy(&pkt_header, packet_data.data(), sizeof(CMEPacketHeader));
 
@@ -173,6 +174,7 @@ private:
         // Process all messages in packet
         while (offset < packet_data.size()) {
             CMEMessageHeader msg_header;
+            DEBUG_PRINT("msg_header: ",msg_header.message_size,msg_header.schema_id,msg_header.template_id,msg_header.version);
             memcpy(&msg_header, packet_data.data() + offset, sizeof(CMEMessageHeader));
             offset += sizeof(CMEMessageHeader);
 
@@ -192,6 +194,7 @@ private:
 
     // Parse message based on template ID
     void parse_message(const char* data, const CMEMessageHeader& header, uint64_t timestamp) {
+        DEBUG_PRINT("parsing actual message: ", header.template_id);
         switch (header.template_id) {
             case 32: // Market Data Incremental Refresh
                 parse_md_increment(data, header, timestamp);
@@ -262,34 +265,34 @@ private:
     // }
 };
 
-int main() {
-    try {
-        // Use relative path from the executable location
-        // C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap
-        string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
-        string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
-
-        DEBUG_PRINT("HEY!");
-
-
-
-        // First check if file exists
-        ifstream file_check(input_file, ios::binary);
-        if (!file_check.good()) {
-            cerr << "Error: Cannot open file: " << input_file << endl;
-            cerr << "Current working directory might not be correct." << endl;
-            return 1;
-        }
-        file_check.close();
-
-        cout << "Found input file: " << input_file << endl;
-
-        CMEParser parser(input_file, output_file);
-        parser.parse();
-        cout << "Parsing completed successfully" << endl;
-    } catch (const exception& e) {
-        cerr << "Error: " << e.what() << endl;
-        return 1;
-    }
-    return 0;
-}
+// int main() {
+//     try {
+//         // Use relative path from the executable location
+//         // C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap
+//         string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
+//         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
+//
+//         DEBUG_PRINT("HEY!");
+//
+//
+//
+//         // First check if file exists
+//         ifstream file_check(input_file, ios::binary);
+//         if (!file_check.good()) {
+//             cerr << "Error: Cannot open file: " << input_file << endl;
+//             cerr << "Current working directory might not be correct." << endl;
+//             return 1;
+//         }
+//         file_check.close();
+//
+//         cout << "Found input file: " << input_file << endl;
+//
+//         CMEParser parser(input_file, output_file);
+//         parser.parse();
+//         cout << "Parsing completed successfully" << endl;
+//     } catch (const exception& e) {
+//         cerr << "Error: " << e.what() << endl;
+//         return 1;
+//     }
+//     return 0;
+// }
