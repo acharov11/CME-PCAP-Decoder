@@ -52,6 +52,11 @@ public:
     CMEParser(const string& input_file) : filename(input_file) {}
 
 
+    /* @TODO
+     * implement way to select CSV vs print, logger, put all messages into CSV
+     * getting lots of MDInstrumentDefinitionOption template id 55?
+     */
+
     // UTILITY FUNCTIONS
 
     // Convert hex string to std::vector<uint8_t>
@@ -304,7 +309,6 @@ public:
         // Convert timestamp to human-readable format
         std::string converted_time = format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec);
 
-
         std::cout << "\n ==== [" << packet_number << "] Header General Info ====" << std::endl;
         std::cout << "Timestamp: " << pcap_header.ts_sec << "." << pcap_header.ts_usec << std::endl;
         std::cout << "Converted Timestamp: " << converted_time << std::endl;
@@ -314,8 +318,13 @@ public:
         std::vector<uint8_t> packet_data(pcap_header.incl_len);
         input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
 
-        // Parse the packet (we have reached the payload)
-        parse_packet(packet_data);
+        if (packet_data.size() < 42) {
+            throw std::runtime_error("Packet too small to contain expected headers (42 bytes).");
+        }
+
+        // Parse the packet (we have reached the payload -- at byte 42)
+        std::vector<uint8_t> payload_data(packet_data.begin() + 42, packet_data.end());
+        parse_packet(payload_data);
 
         // Print the raw byte stream
         if(advanced_debug) {
@@ -346,18 +355,18 @@ int main() {
         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
         CMEParser parser(input_file);
-        // parser.process_nth_packet(1);
+        parser.process_nth_packet(500473);
         // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
 
         /* VALIDATE PACKET PAYLOAD PARSING WITH CME EXAMPLE */
-        std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
-        std::vector<uint8_t> packet_data = parser.hex_string_to_vector(hex_stream);
-        try {
-            parser.parse_packet(packet_data);
-        } catch (const std::exception& e) {
-            std::cerr << "error: " << e.what() << std::endl;
-        }
+        // std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
+        // std::vector<uint8_t> packet_data = parser.hex_string_to_vector(hex_stream);
+        // try {
+        //     parser.parse_packet(packet_data);
+        // } catch (const std::exception& e) {
+        //     std::cerr << "error: " << e.what() << std::endl;
+        // }
 
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
