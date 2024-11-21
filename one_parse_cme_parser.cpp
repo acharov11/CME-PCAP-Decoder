@@ -130,6 +130,15 @@ public:
         return result;
     }
 
+    // Print out all the bits from a given byte (usually uint8_t interpreted as char)
+    void print_bits(uint8_t value) {
+        std::cout << "Bits: ";
+        for (int i = 7; i >= 0; --i) { // Iterate from MSB to LSB
+            std::cout << ((value >> i) & 1);
+        }
+        std::cout << std::endl;
+    }
+
 
     // PARSING
 
@@ -155,7 +164,8 @@ public:
 
         std::cout << "\n==== SBE_LBM Message ====" << std::endl;
         std::cout << "transactTime: " << sbe_lbm.transactTime << std::endl;
-        std::cout << "matchEventIndicator: " << sbe_lbm.matchEventIndicator << std::endl;
+        std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_lbm.matchEventIndicator) << std::endl;
+        print_bits(sbe_lbm.matchEventIndicator);
         std::cout << "noMDEntries: " << sbe_lbm.noMDEntries << std::endl;
 
 
