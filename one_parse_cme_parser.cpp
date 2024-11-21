@@ -24,6 +24,7 @@ class CMEParser {
 private:
     string filename;
     ifstream input_file;
+    bool advanced_debug = true;
 
     // Techinical Header
     struct TechnicalHeader {
@@ -79,16 +80,52 @@ public:
         return oss.str();
     }
 
+    void parse_packet(const std::vector<uint8_t>& packet_data) {
+
+        // Ensure enough data for TechnicalHeader
+        if(packet_data.size() < sizeof(TechnicalHeader)) {
+            throw std::runtime_error("Packet data too small to contain TechnicalHeader");
+        }
+
+        // Parse TechnicalHeader
+        TechnicalHeader tech_header;
+        std::memcpy(&tech_header, packet_data.data(), sizeof(TechnicalHeader));
+
+        std::cout << "\n==== PCAP Technical Header ====" << std::endl;
+        std::cout << "msgSeqNum: " << tech_header.msgSeqNum << std::endl;
+        std::cout << "sendingTime: " << tech_header.sendingTime << std::endl;
+
+        // Ensure enough data for CME Message header
+        size_t offset = sizeof(TechnicalHeader);
+        if (packet_data.size() < offset + sizeof(CMEMessageHeader)) {
+            throw std::runtime_error("Packet data too small to contain CMEMessageHeader");
+        }
+
+        // Parse CME Message Header
+        CMEMessageHeader cme_header;
+        // Inlcude offset of tech header
+        memcpy(&cme_header, packet_data.data() + offset, sizeof(CMEMessageHeader));
+
+        std::cout << "\n==== CME Message Header ====" << std::endl;
+        std::cout << "msgSize: " << cme_header.msgSize << std::endl;
+        std::cout << "blockLength: " << cme_header.blockLength << std::endl;
+        std::cout << "templateID: " << cme_header.templateID << std::endl;
+        std::cout << "schemaID: " << cme_header.schemaID << std::endl;
+        std::cout << "version: " << cme_header.version << std::endl;
+    }
+
     void process_nth_packet(size_t packet_number) {
         input_file.open(filename, ios::binary);
         if (!input_file.is_open()) {
             throw runtime_error("Unable to open file: " + filename);
         }
 
-        // Step 1: Skip the PCAP Global Header (24 bytes)
+        std::cout << "\n <<<< START: PACKET [" << packet_number << "] START >>>>" << std::endl;
+
+        // Skip the PCAP Global Header (24 bytes)
         input_file.ignore(24);
 
-        // Step 2: Read the first PCAP Packet Header (16 bytes)
+        // Read the first PCAP Packet Header (16 bytes)
         PcapPacketHeader pcap_header;
         for (size_t i = 1; i < packet_number; ++i) {
 
@@ -103,7 +140,7 @@ public:
             }
         }
 
-        // Step 3: Read the N-th packet header
+        // Read the N-th packet header
         input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
         if (input_file.eof()) {
             throw std::runtime_error("Reached end of file before finding packet " + std::to_string(packet_number));
@@ -113,44 +150,58 @@ public:
         std::string converted_time = format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec);
 
 
+        std::cout << "\n ==== [" << packet_number << "] Header General Info ====" << std::endl;
         std::cout << "Timestamp: " << pcap_header.ts_sec << "." << pcap_header.ts_usec << std::endl;
         std::cout << "Converted Timestamp: " << converted_time << std::endl;
         std::cout << "Included Length: " << pcap_header.incl_len << " bytes" << std::endl;
 
-        // Step 4: Read the N-th packet payload (up to incl_len bytes)
+        // Read the N-th packet payload (up to incl_len bytes)
         std::vector<uint8_t> packet_data(pcap_header.incl_len);
         input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
 
-        // Step 5: Print the raw byte stream
-        std::cout << "Raw Byte Stream:" << std::endl;
-        for (size_t i = 0; i < packet_data.size(); ++i) {
-            std::cout << std::hex << std::setw(2) << std::setfill('0')
-                      << static_cast<int>(packet_data[i]) << " ";
-            if ((i + 1) % 16 == 0) std::cout << std::endl;
+        // Parse the packet (we have reached the payload)
+        parse_packet(packet_data);
+
+        // Print the raw byte stream
+        if(advanced_debug) {
+            std::cout << "\n ==== [" << packet_number << "] Raw Byte Stream ====" << std::endl;
+            const int NUM_ROWS_PRINT = 3;
+            int row_printed_count = 0;
+            for (size_t i = 0; i < packet_data.size(); ++i) {
+                std::cout << std::hex << std::setw(2) << std::setfill('0')
+                          << static_cast<int>(packet_data[i]) << " ";
+                if ((i + 1) % 16 == 0) {
+                    row_printed_count++;
+                    if(row_printed_count >= NUM_ROWS_PRINT) break;
+                    std::cout << std::endl;
+                }
+            }
+            std::cout << std::dec << std::endl;
         }
-        std::cout << std::dec << std::endl;
+
+        std::cout << "\n <<<< END: PACKET [" << packet_number << "] END >>>>" << std::endl;
 
 
-        // Read first PCAP packet header -- 12 bytes
-        TechnicalHeader tech_header;
-        // input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
-        input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(TechnicalHeader));
-
-        DEBUG_PRINT("\n ==== PCAP Technical Header ==== ");
-        DEBUG_PRINT("msgSeqNum: ", tech_header.msgSeqNum,
-                    "\nsendingTime: ", tech_header.sendingTime);
-
-        CMEMessageHeader cme_header;
-
-        input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(CMEMessageHeader));
-
-        DEBUG_PRINT("\n ==== CME Message header ==== ");
-        DEBUG_PRINT("msgSize: ", cme_header.msgSize,
-                    "\nblockLength: ", cme_header.blockLength,
-                    "\ntemplateID: ",cme_header.templateID,
-                    "\nschemaID: ", cme_header.schemaID,
-                    "\nversion: ",cme_header.version
-                    );
+        // // Read first PCAP packet header -- 12 bytes
+        // TechnicalHeader tech_header;
+        // // input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
+        // input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(TechnicalHeader));
+        //
+        // DEBUG_PRINT("\n ==== PCAP Technical Header ==== ");
+        // DEBUG_PRINT("msgSeqNum: ", tech_header.msgSeqNum,
+        //             "\nsendingTime: ", tech_header.sendingTime);
+        //
+        // CMEMessageHeader cme_header;
+        //
+        // input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(CMEMessageHeader));
+        //
+        // DEBUG_PRINT("\n ==== CME Message header ==== ");
+        // DEBUG_PRINT("msgSize: ", cme_header.msgSize,
+        //             "\nblockLength: ", cme_header.blockLength,
+        //             "\ntemplateID: ",cme_header.templateID,
+        //             "\nschemaID: ", cme_header.schemaID,
+        //             "\nversion: ",cme_header.version
+        //             );
 
         // for()
 
@@ -233,7 +284,9 @@ int main() {
 
         CMEParser parser(input_file);
         // parser.print_raw_bytes(64);
-        parser.process_nth_packet(5);
+        parser.process_nth_packet(1);
+        parser.process_nth_packet(10);
+        parser.process_nth_packet(21);
         // parser.parse_first_packet_2();
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
