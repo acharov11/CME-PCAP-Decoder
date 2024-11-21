@@ -52,7 +52,9 @@ public:
     CMEParser(const string& input_file) : filename(input_file) {}
 
 
-    // Convert hext string to std::vector<uint8_t>
+    // UTILITY FUNCTIONS
+
+    // Convert hex string to std::vector<uint8_t>
     std::vector<uint8_t> hex_string_to_vector(const std::string& hex_string) {
         std::vector<uint8_t> byte_vector;
         std::istringstream hex_stream(hex_string);
@@ -81,7 +83,7 @@ public:
         return oss.str();
     }
 
-    // Util functino to extract a field from a std::vector<uint8_t> at a specific offset and
+    // Util function to extract a field from a std::vector<uint8_t> at a specific offset and
     // advance offset automatically
     template <typename T>
     T extract_field(const std::vector<uint8_t>& data, size_t& offset) {
@@ -94,6 +96,42 @@ public:
         offset += sizeof(T);
         return field;
     }
+
+    // Skip (num_bytes) amount of bytes from a std::vector<uint8_t> and advance offset automatically
+    void skip_bytes(size_t& offset, size_t num_bytes, const std::vector<uint8_t>& data) {
+        if (offset + num_bytes > data.size()) {
+            throw std::runtime_error("Not enough data to skip bytes");
+        }
+        offset += num_bytes;
+    }
+
+    // Extract a custom N-length string field from a std::vector<uint8_t> and automatically advanced offset
+    std::string extract_fixed_length_string(const std::vector<uint8_t>& data, size_t& offset, size_t length) {
+        if (offset + length > data.size()) {
+            throw std::runtime_error("Not enough data to extract string");
+        }
+
+        std::string result(reinterpret_cast<const char*>(data.data() + offset), length);
+        offset += length;
+        return result;
+    }
+
+    // Extract a null-terminated string from a std::vector<uint8_t> and automatically advance offset
+    std::string extract_null_terminated_string(const std::vector<uint8_t>& data, size_t& offset) {
+        size_t start_offset = offset;
+        while (offset < data.size() && data[offset] != '\0') {
+            ++offset;
+        }
+        if (offset == data.size()) {
+            throw std::runtime_error("Null-terminated string not found");
+        }
+        std::string result(reinterpret_cast<const char*>(data.data() + start_offset), offset - start_offset);
+        ++offset; // Skip the null terminator
+        return result;
+    }
+
+
+    // PARSING
 
     void parse_packet(const std::vector<uint8_t>& packet_data) {
 
