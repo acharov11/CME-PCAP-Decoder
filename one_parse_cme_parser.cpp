@@ -70,13 +70,31 @@ public:
             throw runtime_error("Unable to open file: " + filename);
         }
 
-        // Skip PCAP global header (24 bytes)
+        // Step 1: Skip the PCAP Global Header (24 bytes)
+        input_file.ignore(24);
+
+        // Step 2: Read the first PCAP Packet Header (16 bytes)
+        PcapPacketHeader pcap_header;
+        input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
+
+        std::cout << "Timestamp: " << pcap_header.ts_sec << "." << pcap_header.ts_usec << std::endl;
+        std::cout << "Included Length: " << pcap_header.incl_len << " bytes" << std::endl;
+
+        // Step 3: Read the packet payload (up to incl_len bytes)
+        std::vector<uint8_t> packet_data(pcap_header.incl_len);
+        input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
+
+        // Step 4: Print the raw byte stream
+        std::cout << "Raw Byte Stream:" << std::endl;
+        for (size_t i = 0; i < packet_data.size(); ++i) {
+            std::cout << std::hex << std::setw(2) << std::setfill('0')
+                      << static_cast<int>(packet_data[i]) << " ";
+            if ((i + 1) % 16 == 0) std::cout << std::endl;
+        }
+        std::cout << std::dec << std::endl;
 
 
-        // 12 bytes
-        // input_file.ignore(sizeof(TechnicalHeader));
-
-        // Read first PCAP packet header
+        // Read first PCAP packet header -- 12 bytes
         TechnicalHeader tech_header;
         // input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
         input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(TechnicalHeader));
@@ -96,6 +114,8 @@ public:
                     "\nschemaID: ", cme_header.schemaID,
                     "\nversion: ",cme_header.version
                     );
+
+        // for()
 
 
         // cout << "\nPCAP Packet Header:" << endl;
@@ -175,7 +195,9 @@ int main() {
         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
         CMEParser parser(input_file);
+        // parser.print_raw_bytes(64);
         parser.parse_first_packet();
+        // parser.parse_first_packet_2();
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
         return 1;
