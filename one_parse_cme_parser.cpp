@@ -81,7 +81,7 @@ public:
         // input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
         input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(TechnicalHeader));
 
-        DEBUG_PRINT("\nPCAP Technical Header");
+        DEBUG_PRINT("\n ==== PCAP Technical Header ==== ");
         DEBUG_PRINT("msgSeqNum: ", tech_header.msgSeqNum,
                     "\nsendingTime: ", tech_header.sendingTime);
 
@@ -89,8 +89,13 @@ public:
 
         input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(CMEMessageHeader));
 
-        DEBUG_PRINT("\nCME Message header");
-        DEBUG_PRINT("msgSize: ", cme_header);
+        DEBUG_PRINT("\n ==== CME Message header ==== ");
+        DEBUG_PRINT("msgSize: ", cme_header.msgSize,
+                    "\nblockLength: ", cme_header.blockLength,
+                    "\ntemplateID: ",cme_header.templateID,
+                    "\nschemaID: ", cme_header.schemaID,
+                    "\nversion: ",cme_header.version
+                    );
 
 
         // cout << "\nPCAP Packet Header:" << endl;
