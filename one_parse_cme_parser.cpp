@@ -139,6 +139,17 @@ public:
         std::cout << std::endl;
     }
 
+    // Print DEBUG info for a uint8
+    void print_uint8_info(uint8_t value) {
+        std::cout << "Decimal: " << static_cast<int>(value)
+                  << ", Hex: 0x" << std::hex << static_cast<int>(value)
+                  << ", Bits: ";
+        for (int i = 7; i >= 0; --i) {
+            std::cout << ((value >> i) & 1);
+        }
+        std::cout << std::dec << std::endl;
+    }
+
 
     // PARSING
 
@@ -148,27 +159,46 @@ public:
         struct SBE_LBM {
             uint64_t transactTime;
             uint8_t matchEventIndicator;
-            // padding
+            // 2 byte padding
             uint16_t noMDEntries;
             uint8_t numInGroup;
-
+            int64_t highLimitPrice; // (null value as 9223372036854775807 for the mantissa)
+            int64_t lowLimitPrice;
+            // not part but int8 exponent (-9), constant as -9 for PRICENULL 9, not sent in SBE
+            // message on wire, and not part of block length calculation
+            int64_t maxPriceVariation;
+            // not part but int8 exponent (-9), constant as -9 for PRICENULL 9, not sent in SBE
+            // message on wire, and not part of block length calculation
+            int32_t securityID;
+            uint32_t rptSeq;
+            // MDUpateAction uint8 -- 0 -- dfined as 0 constant (not sent in SBE message), not part of block length
+            // MDEntryType char -- g -- constant, not part of block length calculation
         };
 
         SBE_LBM sbe_lbm;
         sbe_lbm.transactTime = extract_field<uint64_t>(packet_data, offset);
         sbe_lbm.matchEventIndicator = extract_field<uint8_t>(packet_data, offset);
-
         skip_bytes(2, packet_data, offset);
-
         sbe_lbm.noMDEntries = extract_field<uint16_t>(packet_data, offset);
+        sbe_lbm.numInGroup = extract_field<uint8_t>(packet_data, offset);
+        sbe_lbm.highLimitPrice = extract_field<int64_t>(packet_data, offset);
+        sbe_lbm.lowLimitPrice = extract_field<int64_t>(packet_data, offset);
+        sbe_lbm.maxPriceVariation = extract_field<int64_t>(packet_data, offset);
+        sbe_lbm.securityID = extract_field<int32_t>(packet_data, offset);
+        sbe_lbm.rptSeq = extract_field<uint32_t>(packet_data, offset);
 
         std::cout << "\n==== SBE_LBM Message ====" << std::endl;
         std::cout << "transactTime: " << sbe_lbm.transactTime << std::endl;
-        std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_lbm.matchEventIndicator) << std::endl;
-        print_bits(sbe_lbm.matchEventIndicator);
+        std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_lbm.matchEventIndicator) << std::dec << std::endl;
+        print_uint8_info(sbe_lbm.matchEventIndicator);
         std::cout << "noMDEntries: " << sbe_lbm.noMDEntries << std::endl;
-
-
+        std::cout << "numInGroup: " << sbe_lbm.numInGroup << std::endl;
+        print_uint8_info(sbe_lbm.numInGroup);
+        std::cout << "highLimitPrice: " << sbe_lbm.highLimitPrice << std::endl;
+        std::cout << "lowLimitPrice: " << sbe_lbm.lowLimitPrice << std::endl;
+        std::cout << "maxPriceVariation: " << sbe_lbm.maxPriceVariation << std::endl;
+        std::cout << "securityID: " << sbe_lbm.securityID << std::endl;
+        std::cout << "rptSeq: " << sbe_lbm.rptSeq << std::endl;
     }
 
     // Further parses the rest of the packet payload based on templateID, will switch and choose
