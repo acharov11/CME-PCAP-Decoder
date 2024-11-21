@@ -48,22 +48,23 @@ private:
         uint32_t orig_len;       // Actual length of packet
     };
 
-    // // CME Packet Header (16 bytes)
-    // struct CMEPacketHeader {
-    //     uint64_t sequence_number; // 8 bytes
-    //     uint64_t sending_time;    // 8 bytes
-    // };
-    //
-    // // CME Message Header (16 bytes)
-    // struct CMEMessageHeader {
-    //     uint32_t message_size;    // 4 bytes
-    //     uint32_t template_id;     // 4 bytes
-    //     uint32_t schema_id;       // 4 bytes
-    //     uint32_t version;         // 4 bytes
-    // };
-
 public:
     CMEParser(const string& input_file) : filename(input_file) {}
+
+
+    // Convert hext string to std::vector<uint8_t>
+    std::vector<uint8_t> hex_string_to_vector(const std::string& hex_string) {
+        std::vector<uint8_t> byte_vector;
+        std::istringstream hex_stream(hex_string);
+        std::string byte_str;
+
+        while (hex_stream >> byte_str) {
+            uint8_t byte = static_cast<uint8_t>(std::stoul(byte_str, nullptr, 16));
+            byte_vector.push_back(byte);
+        }
+
+        return byte_vector;
+    }
 
     std::string format_timestamp(uint32_t ts_sec, uint32_t ts_usec) {
         // Convert ts_sec to HH:MM:SS using gmtime
@@ -80,6 +81,8 @@ public:
         return oss.str();
     }
 
+
+
     void parse_packet(const std::vector<uint8_t>& packet_data) {
 
         // Ensure enough data for TechnicalHeader
@@ -89,7 +92,10 @@ public:
 
         // Parse TechnicalHeader
         TechnicalHeader tech_header;
-        std::memcpy(&tech_header, packet_data.data(), sizeof(TechnicalHeader));
+        // Can't parse whole struct because of padding, so parse struct individually and copy
+        // data with memcpy to new struct
+        std::memcpy(&tech_header.msgSeqNum, packet_data.data(), sizeof(tech_header.msgSeqNum));
+        std::memcpy(&tech_header.sendingTime, packet_data.data() + sizeof(tech_header.msgSeqNum), sizeof(tech_header.sendingTime));
 
         std::cout << "\n==== PCAP Technical Header ====" << std::endl;
         std::cout << "msgSeqNum: " << tech_header.msgSeqNum << std::endl;
@@ -104,7 +110,11 @@ public:
         // Parse CME Message Header
         CMEMessageHeader cme_header;
         // Inlcude offset of tech header
-        memcpy(&cme_header, packet_data.data() + offset, sizeof(CMEMessageHeader));
+        memcpy(&cme_header.msgSize, packet_data.data() + offset, sizeof(CMEMessageHeader));
+        memcpy(&cme_header.blockLength, packet_data.data() + offset, sizeof(CMEMessageHeader));
+        memcpy(&cme_header.templateID, packet_data.data() + offset, sizeof(CMEMessageHeader));
+        memcpy(&cme_header.schemaID, packet_data.data() + offset, sizeof(CMEMessageHeader));
+        memcpy(&cme_header.version, packet_data.data() + offset, sizeof(CMEMessageHeader));
 
         std::cout << "\n==== CME Message Header ====" << std::endl;
         std::cout << "msgSize: " << cme_header.msgSize << std::endl;
@@ -181,98 +191,6 @@ public:
 
         std::cout << "\n <<<< END: PACKET [" << packet_number << "] END >>>>" << std::endl;
 
-
-        // // Read first PCAP packet header -- 12 bytes
-        // TechnicalHeader tech_header;
-        // // input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
-        // input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(TechnicalHeader));
-        //
-        // DEBUG_PRINT("\n ==== PCAP Technical Header ==== ");
-        // DEBUG_PRINT("msgSeqNum: ", tech_header.msgSeqNum,
-        //             "\nsendingTime: ", tech_header.sendingTime);
-        //
-        // CMEMessageHeader cme_header;
-        //
-        // input_file.read(reinterpret_cast<char*>(&tech_header), sizeof(CMEMessageHeader));
-        //
-        // DEBUG_PRINT("\n ==== CME Message header ==== ");
-        // DEBUG_PRINT("msgSize: ", cme_header.msgSize,
-        //             "\nblockLength: ", cme_header.blockLength,
-        //             "\ntemplateID: ",cme_header.templateID,
-        //             "\nschemaID: ", cme_header.schemaID,
-        //             "\nversion: ",cme_header.version
-        //             );
-
-        // for()
-
-
-        // cout << "\nPCAP Packet Header:" << endl;
-        // cout << "Timestamp: " << pcap_header.ts_sec << "."
-        //      << setfill('0') << setw(6) << pcap_header.ts_usec << endl;
-        // cout << "Captured Length: " << pcap_header.incl_len << " bytes" << endl;
-        // cout << "Original Length: " << pcap_header.orig_len << " bytes" << endl;
-        // cout << "UDP Payload Length: " << (pcap_header.incl_len - 42) << " bytes" << endl;
-
-        // Skip network headers (Ethernet + IP + UDP = 42 bytes)
-        // input_file.ignore(42);
-
-        // // Read and display the raw UDP payload bytes
-        // vector<uint8_t> payload(pcap_header.incl_len - 42);
-        // input_file.read(reinterpret_cast<char*>(payload.data()), pcap_header.incl_len - 42);
-        //
-        // cout << "\nRaw UDP Payload (hex):" << endl;
-        // for(size_t i = 0; i < payload.size(); i++) {
-        //     cout << hex << setfill('0') << setw(2)
-        //          << static_cast<int>(payload[i]) << " ";
-        //     if((i + 1) % 16 == 0) cout << endl;
-        // }
-        // cout << dec << endl;
-        //
-        // // Parse CME packet header (first 8 bytes)
-        // if (payload.size() >= 8) {
-        //     // First 4 bytes: sequence number
-        //     uint32_t seq_num = 0;
-        //     seq_num |= static_cast<uint32_t>(payload[0]);
-        //     seq_num |= static_cast<uint32_t>(payload[1]) << 8;
-        //     seq_num |= static_cast<uint32_t>(payload[2]) << 16;
-        //     seq_num |= static_cast<uint32_t>(payload[3]) << 24;
-        //
-        //     // Next 4 bytes: sending time
-        //     uint32_t send_time = 0;
-        //     send_time |= static_cast<uint32_t>(payload[4]);
-        //     send_time |= static_cast<uint32_t>(payload[5]) << 8;
-        //     send_time |= static_cast<uint32_t>(payload[6]) << 16;
-        //     send_time |= static_cast<uint32_t>(payload[7]) << 24;
-        //
-        //     cout << "\nCME Packet Header (corrected):" << endl;
-        //     cout << "Sequence number: 0x" << hex << setfill('0') << setw(8) << seq_num << dec << endl;
-        //     cout << "Sending time: 0x" << hex << setfill('0') << setw(8) << send_time << dec << endl;
-        //
-        //     // Looking at payload -- my example:
-        //     // 85 01 00 00 - Sequence number should be 0x00000185
-        //     // c4 04 eb 4b - Sending time should be 0x4beb04c4
-        //
-        //     // Parse CME message header (next 8 bytes)
-        //     if (payload.size() >= 16) {
-        //         uint32_t msg_size = 0;
-        //         msg_size |= static_cast<uint32_t>(payload[8]);
-        //         msg_size |= static_cast<uint32_t>(payload[9]) << 8;
-        //         msg_size |= static_cast<uint32_t>(payload[10]) << 16;
-        //         msg_size |= static_cast<uint32_t>(payload[11]) << 24;
-        //
-        //         uint32_t template_id = 0;
-        //         template_id |= static_cast<uint32_t>(payload[12]);
-        //         template_id |= static_cast<uint32_t>(payload[13]) << 8;
-        //         template_id |= static_cast<uint32_t>(payload[14]) << 16;
-        //         template_id |= static_cast<uint32_t>(payload[15]) << 24;
-        //
-        //         cout << "\nCME Message Header:" << endl;
-        //         cout << "Message size: " << msg_size << endl;
-        //         cout << "Template ID: " << template_id << endl;
-        //     }
-
-        // }
-
         input_file.close();
     }
 };
@@ -283,11 +201,19 @@ int main() {
         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
         CMEParser parser(input_file);
-        // parser.print_raw_bytes(64);
-        parser.process_nth_packet(1);
-        parser.process_nth_packet(10);
-        parser.process_nth_packet(21);
-        // parser.parse_first_packet_2();
+        // parser.process_nth_packet(1);
+        // parser.process_nth_packet(10);
+        // parser.process_nth_packet(21);
+
+        /* VALIDATE PACKET PAYLOAD PARSING WITH CME EXAMPLE */
+        std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
+        std::vector<uint8_t> packet_data = parser.hex_string_to_vector(hex_stream);
+        try {
+            parser.parse_packet(packet_data);
+        } catch (const std::exception& e) {
+            std::cerr << "error: " << e.what() << std::endl;
+        }
+
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
         return 1;
