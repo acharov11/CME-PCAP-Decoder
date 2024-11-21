@@ -81,40 +81,57 @@ public:
         return oss.str();
     }
 
+    // Util functino to extract a field from a std::vector<uint8_t> at a specific offset and
+    // advance offset automatically
+    template <typename T>
+    T extract_field(const std::vector<uint8_t>& data, size_t& offset) {
+        if (offset + sizeof(T) > data.size()) {
+            throw std::runtime_error("Not enough data to extract field");
+        }
 
+        T field;
+        std::memcpy(&field, data.data() + offset, sizeof(T));
+        offset += sizeof(T);
+        return field;
+    }
 
     void parse_packet(const std::vector<uint8_t>& packet_data) {
 
-        // Ensure enough data for TechnicalHeader
+        // Ensure enough data for TechnicalHeader -- sanity check
         if(packet_data.size() < sizeof(TechnicalHeader)) {
             throw std::runtime_error("Packet data too small to contain TechnicalHeader");
         }
+
+        // Store offset to advance through packet data
+        size_t offset = 0;
 
         // Parse TechnicalHeader
         TechnicalHeader tech_header;
         // Can't parse whole struct because of padding, so parse struct individually and copy
         // data with memcpy to new struct
-        std::memcpy(&tech_header.msgSeqNum, packet_data.data(), sizeof(tech_header.msgSeqNum));
-        std::memcpy(&tech_header.sendingTime, packet_data.data() + sizeof(tech_header.msgSeqNum), sizeof(tech_header.sendingTime));
+        // std::memcpy(&tech_header.msgSeqNum, packet_data.data(), sizeof(tech_header.msgSeqNum));
+        // std::memcpy(&tech_header.sendingTime, packet_data.data() + sizeof(tech_header.msgSeqNum), sizeof(tech_header.sendingTime));
+
+        // New method is faster
+        tech_header.msgSeqNum = extract_field<uint32_t>(packet_data, offset);
+        tech_header.sendingTime = extract_field<uint64_t>(packet_data, offset);
 
         std::cout << "\n==== PCAP Technical Header ====" << std::endl;
         std::cout << "msgSeqNum: " << tech_header.msgSeqNum << std::endl;
         std::cout << "sendingTime: " << tech_header.sendingTime << std::endl;
 
         // Ensure enough data for CME Message header
-        size_t offset = sizeof(TechnicalHeader);
         if (packet_data.size() < offset + sizeof(CMEMessageHeader)) {
             throw std::runtime_error("Packet data too small to contain CMEMessageHeader");
         }
 
         // Parse CME Message Header
         CMEMessageHeader cme_header;
-        // Inlcude offset of tech header
-        memcpy(&cme_header.msgSize, packet_data.data() + offset, sizeof(CMEMessageHeader));
-        memcpy(&cme_header.blockLength, packet_data.data() + offset, sizeof(CMEMessageHeader));
-        memcpy(&cme_header.templateID, packet_data.data() + offset, sizeof(CMEMessageHeader));
-        memcpy(&cme_header.schemaID, packet_data.data() + offset, sizeof(CMEMessageHeader));
-        memcpy(&cme_header.version, packet_data.data() + offset, sizeof(CMEMessageHeader));
+        cme_header.msgSize = extract_field<uint16_t>(packet_data,offset);
+        cme_header.blockLength = extract_field<uint16_t>(packet_data,offset);
+        cme_header.templateID = extract_field<uint16_t>(packet_data,offset);
+        cme_header.schemaID = extract_field<uint16_t>(packet_data,offset);
+        cme_header.version = extract_field<uint16_t>(packet_data,offset);
 
         std::cout << "\n==== CME Message Header ====" << std::endl;
         std::cout << "msgSize: " << cme_header.msgSize << std::endl;
