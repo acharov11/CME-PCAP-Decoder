@@ -64,6 +64,21 @@ private:
 public:
     CMEParser(const string& input_file) : filename(input_file) {}
 
+    std::string format_timestamp(uint32_t ts_sec, uint32_t ts_usec) {
+        // Convert ts_sec to HH:MM:SS using gmtime
+        std::time_t raw_time = static_cast<std::time_t>(ts_sec);
+        std::tm* timeinfo = std::gmtime(&raw_time);
+
+        // Format as HH:MM:SS.UUUUUU
+        std::ostringstream oss;
+        oss << std::setfill('0') << std::setw(2) << timeinfo->tm_hour << ":"
+            << std::setw(2) << timeinfo->tm_min << ":"
+            << std::setw(2) << timeinfo->tm_sec << "."
+            << std::setw(6) << ts_usec; // Append microseconds
+
+        return oss.str();
+    }
+
     void process_nth_packet(size_t packet_number) {
         input_file.open(filename, ios::binary);
         if (!input_file.is_open()) {
@@ -94,8 +109,12 @@ public:
             throw std::runtime_error("Reached end of file before finding packet " + std::to_string(packet_number));
         }
 
+        // Convert timestamp to human-readable format
+        std::string converted_time = format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec);
+
 
         std::cout << "Timestamp: " << pcap_header.ts_sec << "." << pcap_header.ts_usec << std::endl;
+        std::cout << "Converted Timestamp: " << converted_time << std::endl;
         std::cout << "Included Length: " << pcap_header.incl_len << " bytes" << std::endl;
 
         // Step 4: Read the N-th packet payload (up to incl_len bytes)
