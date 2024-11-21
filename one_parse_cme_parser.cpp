@@ -64,7 +64,7 @@ private:
 public:
     CMEParser(const string& input_file) : filename(input_file) {}
 
-    void parse_first_packet() {
+    void process_nth_packet(size_t packet_number) {
         input_file.open(filename, ios::binary);
         if (!input_file.is_open()) {
             throw runtime_error("Unable to open file: " + filename);
@@ -75,16 +75,34 @@ public:
 
         // Step 2: Read the first PCAP Packet Header (16 bytes)
         PcapPacketHeader pcap_header;
+        for (size_t i = 1; i < packet_number; ++i) {
+
+            // Read the PCAP Packet Header
+            input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
+
+            // Skip the packet data (incl_len bytes)
+            input_file.ignore(pcap_header.incl_len);
+
+            if(input_file.eof()) {
+                throw std::runtime_error("Reached end of file before finding packet " + std::to_string(packet_number));
+            }
+        }
+
+        // Step 3: Read the N-th packet header
         input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
+        if (input_file.eof()) {
+            throw std::runtime_error("Reached end of file before finding packet " + std::to_string(packet_number));
+        }
+
 
         std::cout << "Timestamp: " << pcap_header.ts_sec << "." << pcap_header.ts_usec << std::endl;
         std::cout << "Included Length: " << pcap_header.incl_len << " bytes" << std::endl;
 
-        // Step 3: Read the packet payload (up to incl_len bytes)
+        // Step 4: Read the N-th packet payload (up to incl_len bytes)
         std::vector<uint8_t> packet_data(pcap_header.incl_len);
         input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
 
-        // Step 4: Print the raw byte stream
+        // Step 5: Print the raw byte stream
         std::cout << "Raw Byte Stream:" << std::endl;
         for (size_t i = 0; i < packet_data.size(); ++i) {
             std::cout << std::hex << std::setw(2) << std::setfill('0')
@@ -196,7 +214,7 @@ int main() {
 
         CMEParser parser(input_file);
         // parser.print_raw_bytes(64);
-        parser.parse_first_packet();
+        parser.process_nth_packet(5);
         // parser.parse_first_packet_2();
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
