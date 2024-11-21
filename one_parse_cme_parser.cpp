@@ -98,7 +98,7 @@ public:
     }
 
     // Skip (num_bytes) amount of bytes from a std::vector<uint8_t> and advance offset automatically
-    void skip_bytes(size_t& offset, size_t num_bytes, const std::vector<uint8_t>& data) {
+    void skip_bytes(size_t num_bytes, const std::vector<uint8_t>& data, size_t& offset) {
         if (offset + num_bytes > data.size()) {
             throw std::runtime_error("Not enough data to skip bytes");
         }
@@ -106,7 +106,7 @@ public:
     }
 
     // Extract a custom N-length string field from a std::vector<uint8_t> and automatically advanced offset
-    std::string extract_fixed_length_string(const std::vector<uint8_t>& data, size_t& offset, size_t length) {
+    std::string extract_fixed_length_string(size_t length, const std::vector<uint8_t>& data, size_t& offset) {
         if (offset + length > data.size()) {
             throw std::runtime_error("Not enough data to extract string");
         }
@@ -132,6 +132,53 @@ public:
 
 
     // PARSING
+
+    void parse_template_50_LBM(const std::vector<uint8_t>& packet_data, size_t& offset) {
+        std::cout << "Parsing template 50_LBM..." << std::endl;
+
+        struct SBE_LBM {
+            uint64_t transactTime;
+            uint8_t matchEventIndicator;
+            // padding
+            uint16_t noMDEntries;
+            uint8_t numInGroup;
+
+        };
+
+        SBE_LBM sbe_lbm;
+        sbe_lbm.transactTime = extract_field<uint64_t>(packet_data, offset);
+        sbe_lbm.matchEventIndicator = extract_field<uint8_t>(packet_data, offset);
+
+        skip_bytes(2, packet_data, offset);
+
+        sbe_lbm.noMDEntries = extract_field<uint16_t>(packet_data, offset);
+
+        std::cout << "\n==== SBE_LBM Message ====" << std::endl;
+        std::cout << "transactTime: " << sbe_lbm.transactTime << std::endl;
+        std::cout << "matchEventIndicator: " << sbe_lbm.matchEventIndicator << std::endl;
+        std::cout << "noMDEntries: " << sbe_lbm.noMDEntries << std::endl;
+
+
+    }
+
+    // Further parses the rest of the packet payload based on templateID, will switch and choose
+    // the correct one
+    void parse_by_template_id(uint16_t templateID, const std::vector<uint8_t>& packet_data, size_t& offset) {
+        std::cout << "\n<<< Attempting to parse templateID [" << templateID << "] >>>" << std::endl;
+        switch (templateID) {
+            case 50:
+                parse_template_50_LBM(packet_data, offset);
+            break;
+            case 2:
+                // parse_template_2(packet_data, offset);
+                std::cout << "parsing case 2" << std::endl;
+            break;
+            // Add cases for other templateIDs
+            default:
+                std::cerr << "Unknown templateID: " << templateID << std::endl;
+            break;
+        }
+    }
 
     void parse_packet(const std::vector<uint8_t>& packet_data) {
 
@@ -177,6 +224,9 @@ public:
         std::cout << "templateID: " << cme_header.templateID << std::endl;
         std::cout << "schemaID: " << cme_header.schemaID << std::endl;
         std::cout << "version: " << cme_header.version << std::endl;
+
+        // Dispatch parsing based on templateID
+        parse_by_template_id(cme_header.templateID, packet_data, offset);
     }
 
     void process_nth_packet(size_t packet_number) {
