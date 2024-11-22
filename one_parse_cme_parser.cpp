@@ -54,7 +54,7 @@ public:
 
     /* @TODO
      * implement way to select CSV vs print, logger, put all messages into CSV
-     * getting lots of MDInstrumentDefinitionOption template id 55?
+     * getting lots of MDInstrumentDefinitionOption template id 55? MDInstrumentDefinitionSpread56
      */
 
     // UTILITY FUNCTIONS
