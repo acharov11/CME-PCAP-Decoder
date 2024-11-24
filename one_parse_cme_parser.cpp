@@ -16,6 +16,8 @@
 #include <cstring>
 #include <iomanip>
 #include <string>
+#include <set>
+#include <map>
 #include "tools/DebugUtil.h"
 #include "MKTData/MessageHeader.h"
 #include "Logger.h"
@@ -24,11 +26,16 @@ using namespace std;
 
 class CMEParser {
 private:
-    string filename;
+    string filename;                                // Input file name
     ifstream input_file;
     ofstream csv_file;
 
-    Logger logger_;
+    std::set<uint16_t> allowed_template_ids_;       // Templates to include in CSV
+    std::map<uint16_t, size_t> template_count_;     // Counts for each template
+    std::vector<std::string> custom_header_;        // Optional custom header
+
+
+    Logger logger_;                                 // Custom logger instance
 
     bool advanced_debug = true;
 
@@ -55,8 +62,11 @@ private:
     };
 
 public:
-    CMEParser(const string& input_file, const string& output_file)
-    : filename(input_file) {
+    CMEParser(const string& input_file, const string& output_file,
+        const std::set<uint16_t>& allowed_templates = {},
+        const std::vector<std::string>& custom_header = {})
+    : filename(input_file), allowed_template_ids_(allowed_templates), custom_header_(custom_header) {
+
         intialize_logger();
         csv_file.open(output_file);
         if(!csv_file.is_open()) {
@@ -65,8 +75,9 @@ public:
         }
         logger_.log(Logger::INFO, "CSV file opened succesfully: " + output_file);
         // Write to CSV header
-        csv_file << "PacketNumber,Timestamp,msgSeqNum,sendingTime,msgSize,blockLength,templateID,schemaID,version,"
-                 << "transactTime,matchEventIndicator,noMDEntries,numInGroup,highLimitPrice,lowLimitPrice\n";
+        // csv_file << "PacketNumber,Timestamp,msgSeqNum,sendingTime,msgSize,blockLength,templateID,schemaID,version,"
+                 // << "transactTime,matchEventIndicator,noMDEntries,numInGroup,highLimitPrice,lowLimitPrice\n";
+        write_header(custom_header_);
     }
 
     ~CMEParser() {
@@ -178,6 +189,14 @@ public:
             std::cout << ((value >> i) & 1);
         }
         std::cout << std::dec << std::endl;
+    }
+
+    // Print unique template IDs and their counts
+    void print_template_statistics() {
+        logger_.log(Logger::INFO, "Template Statistics");
+        for (const auto& entry : template_count_) {
+            std::cout << "TemplateID: " << entry.first << ", Count: " << entry.second << "\n";
+        }
     }
 
 
@@ -314,6 +333,15 @@ public:
             std::cout << "version: " << cme_header.version << std::endl;
         }
 
+        // Count occurences of each template
+        template_count_[cme_header.templateID]++;
+
+        // Filter by allowed template IDs (if not ALL)
+        if (!allowed_template_ids_.empty() && allowed_template_ids_.find(cme_header.templateID) == allowed_template_ids_.end()) {
+            logger_.log(Logger::DEBUG, "Skipping templateID: " + std::to_string(cme_header.templateID));
+            return {}; // Skip this template
+        }
+
         // Build row with core fields
         row = {
             std::to_string(tech_header.msgSeqNum),
@@ -356,6 +384,9 @@ public:
         // Process payload
         row = process_payload(payload_data);
 
+        // Skip if payload is empty (non-allowed template)
+        if (row.empty()) return {};
+
         // Add packet metadata
         row.insert(row.begin(), {
             std::to_string(packet_number), // Packet num
@@ -376,6 +407,25 @@ public:
             }
             csv_file << "\n";
         }
+    }
+
+    void write_header(const std::vector<std::string>& row) {
+        if (!custom_header_.empty()) {
+            for (size_t i = 0; i < custom_header_.size(); ++i) {
+                csv_file << custom_header_[i];
+                if (i < custom_header_.size() - 1) {
+                    csv_file << ",";
+                }
+            }
+        } else {
+            for (size_t i = 0; i < row.size(); ++i) {
+                csv_file << "Field" << i + 1; // Default header naming
+                if (i < row.size() - 1) {
+                    csv_file << ",";
+                }
+            }
+        }
+        csv_file << "\n";
     }
 
     // process N amount of packets
@@ -442,7 +492,9 @@ public:
 
             try {
                 std::vector<std::string> row = process_single_packet(packet_data, current_packet, pcap_header);
-                batch_data.push_back(row);
+                if (!row.empty()) {     // Only add rows for allowed templates
+                    batch_data.push_back(row);
+                }
             } catch (const std::exception& e) {
                 logger_.log(Logger::ERROR, "Error processing packet " + std::to_string(current_packet) + ": " + e.what());
             }
@@ -461,11 +513,13 @@ public:
 
         // Write remaining data
         if (!batch_data.empty()) {
+            logger_.log(Logger::INFO, "Processing remaining " + std::to_string(batch_data.size()) + " packets.");
             write_to_csv(batch_data);
         }
 
         input_file.close();
-        logger_.log(Logger::INFO, "Finished processing packets.");
+        std::cout << "\n";
+        logger_.log(Logger::INFO, "Finished >>> Processed " + std::to_string(processed_packets) + " packets.\n");
     }
 
     void process_nth_packet(size_t packet_number) {
@@ -566,17 +620,31 @@ int main() {
     try {
         // Logger::LogLevel log_level = Logger::DEBUG;
 
+        // Set I/O
         string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
-        CMEParser parser(input_file, output_file);
+        // Specify allowed template IDs
+        std::set<uint16_t> allowed_templates = {};
+
+        // Specify custom header (OPTIONAL)
+        std::vector<std::string> custom_header = {
+            "PacketNumber", "Timestamp", "msgSeqNum", "sendingTime",
+            "msgSize", "blockLength", "templateID", "schemaID", "version",
+            "transactTime", "matchEventIndicator", "noMDEntries", "numInGroup",
+            "highLimitPrice", "lowLimitPrice"
+        };
+
+        CMEParser parser(input_file, output_file, allowed_templates, custom_header);
         // parser.process_nth_packet(1);
-        parser.process_packets(100000, 10000);
+        parser.process_packets(1000000, 100000);
 ;        // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
 
+        // Print template statistics
+        parser.print_template_statistics();
 
-        std::cout << "[SYSTEM] Processing complete. Results written to " << output_file << std::endl;
+        std::cout << "\n[SYSTEM] Processing complete. Have an excellent day user. Results written to " << output_file << std::endl;
 
         /* VALIDATE PACKET PAYLOAD PARSING WITH CME EXAMPLE */
         // std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
