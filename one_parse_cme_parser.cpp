@@ -24,6 +24,8 @@ class CMEParser {
 private:
     string filename;
     ifstream input_file;
+    ofstream csv_file;
+
     bool advanced_debug = true;
 
     // Techinical Header
@@ -49,7 +51,21 @@ private:
     };
 
 public:
-    CMEParser(const string& input_file) : filename(input_file) {}
+    CMEParser(const string& input_file, const string& output_file) : filename(input_file) {
+        csv_file.open(output_file);
+        if(!csv_file.is_open()) {
+            throw std::runtime_error("Unable to open CSV file: " + output_file);
+        }
+        // Write to CSV header
+        csv_file << "PacketNumber,Timestamp,msgSize,blockLength,templateID,schemaID,version,"
+                 << "transactTime,matchEventIndicator,noMDEntries,numInGroup,highLimitPrice,lowLimitPrice\n";
+    }
+
+    ~CMEParser() {
+        if (csv_file.is_open()) {
+            csv_file.close();
+        }
+    }
 
 
     /* @TODO
@@ -158,7 +174,7 @@ public:
 
     // PARSING
 
-    void parse_template_50_LBM(const std::vector<uint8_t>& packet_data, size_t& offset) {
+    std::vector<std::string> parse_template_50_LBM(const std::vector<uint8_t>& packet_data, size_t& offset) {
         std::cout << "Parsing template 50_LBM..." << std::endl;
 
         struct SBE_LBM {
@@ -204,33 +220,46 @@ public:
         std::cout << "maxPriceVariation: " << sbe_lbm.maxPriceVariation << std::endl;
         std::cout << "securityID: " << sbe_lbm.securityID << std::endl;
         std::cout << "rptSeq: " << sbe_lbm.rptSeq << std::endl;
+
+        std::vector<std::string> additional_fields(6,"");
+        additional_fields[0] = sbe_lbm.transactTime;
+        additional_fields[1] = sbe_lbm.matchEventIndicator;
+        additional_fields[2] = sbe_lbm.noMDEntries;
+        additional_fields[3] = sbe_lbm.numInGroup;
+        additional_fields[4] = sbe_lbm.highLimitPrice;
+        additional_fields[5] = sbe_lbm.lowLimitPrice;
+        return additional_fields;
     }
+
+
 
     // Further parses the rest of the packet payload based on templateID, will switch and choose
     // the correct one
-    void parse_by_template_id(uint16_t templateID, const std::vector<uint8_t>& packet_data, size_t& offset) {
+    std::vector<std::string> parse_by_template_id(uint16_t templateID, const std::vector<uint8_t>& packet_data, size_t& offset) {
         std::cout << "\n<<< Attempting to parse templateID [" << templateID << "] >>>" << std::endl;
         switch (templateID) {
             case 50:
-                parse_template_50_LBM(packet_data, offset);
+                return parse_template_50_LBM(packet_data, offset);
             break;
-            case 2:
-                // parse_template_2(packet_data, offset);
-                std::cout << "parsing case 2" << std::endl;
-            break;
+            // case 2:
+            //     // parse_template_2(packet_data, offset);
+            //     std::cout << "parsing case 2" << std::endl;
+            // break;
             // Add cases for other templateIDs
             default:
                 std::cerr << "Unknown templateID: " << templateID << std::endl;
+            return vector<std::string>(6,"");
             break;
         }
     }
 
-    void parse_packet(const std::vector<uint8_t>& packet_data) {
+    std::vector<std::string> process_payload(const std::vector<uint8_t>& payload_data) {
+        std::vector<std::string> row;
 
-        // Ensure enough data for TechnicalHeader -- sanity check
-        if(packet_data.size() < sizeof(TechnicalHeader)) {
-            throw std::runtime_error("Packet data too small to contain TechnicalHeader");
+        if (payload_data.size() < sizeof(TechnicalHeader)) {
+            throw std::runtime_error("Payload data too small to contain TechnicalHeader");
         }
+
 
         // Store offset to advance through packet data
         size_t offset = 0;
@@ -243,25 +272,25 @@ public:
         // std::memcpy(&tech_header.sendingTime, packet_data.data() + sizeof(tech_header.msgSeqNum), sizeof(tech_header.sendingTime));
 
         // New method is faster
-        tech_header.msgSeqNum = extract_field<uint32_t>(packet_data, offset);
-        tech_header.sendingTime = extract_field<uint64_t>(packet_data, offset);
+        tech_header.msgSeqNum = extract_field<uint32_t>(payload_data, offset);
+        tech_header.sendingTime = extract_field<uint64_t>(payload_data, offset);
 
         std::cout << "\n==== PCAP Technical Header ====" << std::endl;
         std::cout << "msgSeqNum: " << tech_header.msgSeqNum << std::endl;
         std::cout << "sendingTime: " << tech_header.sendingTime << std::endl;
 
         // Ensure enough data for CME Message header
-        if (packet_data.size() < offset + sizeof(CMEMessageHeader)) {
-            throw std::runtime_error("Packet data too small to contain CMEMessageHeader");
+        if (payload_data.size() < offset + sizeof(CMEMessageHeader)) {
+            throw std::runtime_error("Payload data too small to contain CMEMessageHeader");
         }
 
         // Parse CME Message Header
         CMEMessageHeader cme_header;
-        cme_header.msgSize = extract_field<uint16_t>(packet_data,offset);
-        cme_header.blockLength = extract_field<uint16_t>(packet_data,offset);
-        cme_header.templateID = extract_field<uint16_t>(packet_data,offset);
-        cme_header.schemaID = extract_field<uint16_t>(packet_data,offset);
-        cme_header.version = extract_field<uint16_t>(packet_data,offset);
+        cme_header.msgSize = extract_field<uint16_t>(payload_data,offset);
+        cme_header.blockLength = extract_field<uint16_t>(payload_data,offset);
+        cme_header.templateID = extract_field<uint16_t>(payload_data,offset);
+        cme_header.schemaID = extract_field<uint16_t>(payload_data,offset);
+        cme_header.version = extract_field<uint16_t>(payload_data,offset);
 
         std::cout << "\n==== CME Message Header ====" << std::endl;
         std::cout << "msgSize: " << cme_header.msgSize << std::endl;
@@ -270,8 +299,111 @@ public:
         std::cout << "schemaID: " << cme_header.schemaID << std::endl;
         std::cout << "version: " << cme_header.version << std::endl;
 
-        // Dispatch parsing based on templateID
-        parse_by_template_id(cme_header.templateID, packet_data, offset);
+        // Build row with core fields
+        row = {
+            std::to_string(tech_header.msgSeqNum),
+            std::to_string(tech_header.sendingTime),
+            std::to_string(cme_header.msgSize),
+            std::to_string(cme_header.blockLength),
+            std::to_string(cme_header.templateID),
+            std::to_string(cme_header.schemaID),
+            std::to_string(cme_header.version)
+        };
+
+        // Add additional fields from template-specific parsing. Dispatch parsing based on templateID
+        std::vector<std::string> additional_fields = parse_by_template_id(cme_header.templateID, payload_data, offset);
+        row.insert(row.end(), additional_fields.begin(), additional_fields.end());
+
+        return row;
+    }
+
+    std::vector<std::string> process_single_packet(const std::vector<uint8_t>& packet_data, size_t packet_number, const PcapPacketHeader& pcap_header) {
+        // vector structure as CSV line
+        std::vector<std::string> row;
+
+        // Ensure enough data for TechnicalHeader -- sanity check
+        // if(packet_data.size() < sizeof(TechnicalHeader)) {
+        //     throw std::runtime_error("Packet data too small to contain TechnicalHeader");
+        // }
+
+        // Now check whole payload
+        if (packet_data.size() < 42) {
+            std::cerr << "Packet too small, skipping.\n";
+            row.push_back(std::to_string(packet_number)); // Packet number
+            row.push_back(format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec)); // Timestamp
+            row.insert(row.end(), 12, ""); // Fill the rest with blanks
+            return row;
+        }
+
+        // Parse the packet (we have reached the payload -- at byte 42)
+        std::vector<uint8_t> payload_data(packet_data.begin() + 42, packet_data.end());
+
+        // Process payload
+        row = process_payload(payload_data);
+
+        // Add packet metadata
+        row.insert(row.begin(), {
+            std::to_string(packet_number), // Packet num
+            format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec) // Time stamp
+        });
+
+        return row;
+    }
+
+    // Convert row vector to CSV
+    void write_to_csv(const std::vector<std::vector<std::string>>& rows) {
+        for (const auto& row : rows) {
+            for (size_t i = 0; i < row.size(); ++i) {
+                csv_file << row[i];
+                if (i < row.size() - 1) {
+                    csv_file << ",";
+                }
+            }
+            csv_file << "\n";
+        }
+    }
+
+    // process N amount of packets
+    void process_packets(size_t total_packets, size_t batch_size) {
+        input_file.open(filename, ios::binary);
+        if (!input_file.is_open()) {
+            throw std::runtime_error("Unable to open file: " + filename);
+        }
+
+        // Skip the PCAP Global Header (24 bytes)
+        input_file.ignore(24);
+
+        std::vector<std::vector<std::string>> batch_data;
+        size_t processed_packets = 0;
+
+        while (processed_packets < total_packets) {
+            PcapPacketHeader pcap_header;
+            // Read the PCAP Packet Header
+            input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
+            if (input_file.eof()) break;
+            // Read the N-th packet payload (up to incl_len bytes)
+            std::vector<uint8_t> packet_data(pcap_header.incl_len);
+            input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
+            if (input_file.eof()) break;
+
+            std::vector<std::string> row = process_single_packet(packet_data, processed_packets + 1, pcap_header);
+            batch_data.push_back(row);
+
+            // Write in batches
+            if (batch_data.size() >= batch_size) {
+                write_to_csv(batch_data);
+                batch_data.clear();
+            }
+
+            ++processed_packets;
+        }
+
+        // Write remaining data
+        if (!batch_data.empty()) {
+            write_to_csv(batch_data);
+        }
+
+        input_file.close();
     }
 
     void process_nth_packet(size_t packet_number) {
@@ -317,14 +449,19 @@ public:
         // Read the N-th packet payload (up to incl_len bytes)
         std::vector<uint8_t> packet_data(pcap_header.incl_len);
         input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
-
-        if (packet_data.size() < 42) {
-            throw std::runtime_error("Packet too small to contain expected headers (42 bytes).");
+        if (input_file.eof()) {
+            throw std::runtime_error("Reached end of file while reading packet data.");
         }
+        // if (packet_data.size() < 42) {
+        //     throw std::runtime_error("Packet too small to contain expected headers (42 bytes).");
+        // }
 
         // Parse the packet (we have reached the payload -- at byte 42)
-        std::vector<uint8_t> payload_data(packet_data.begin() + 42, packet_data.end());
-        parse_packet(payload_data);
+        // std::vector<uint8_t> payload_data(packet_data.begin() + 42, packet_data.end());
+        // parse_packet(payload_data);
+        std::vector<std::string> row = process_single_packet(packet_data, packet_number, pcap_header);
+        // std::vector<std::vector<std::string>> test_row;
+        // test_row.push_back(row);
 
         // Print the raw byte stream
         if(advanced_debug) {
@@ -343,6 +480,15 @@ public:
             std::cout << std::dec << std::endl;
         }
 
+        // Print row for debug
+        std::cout << "\n ==== ROW PRINT [" << packet_number << "] DEBUG ====" << std::endl;
+        for (size_t i = 0; i < row.size(); ++i) {
+            std::cout << row[i];
+            if (i < row.size() - 1)
+                std::cout << ",";
+        }
+        std::cout << std::endl;
+
         std::cout << "\n <<<< END: PACKET [" << packet_number << "] END >>>>" << std::endl;
 
         input_file.close();
@@ -354,16 +500,17 @@ int main() {
         string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
-        CMEParser parser(input_file);
-        parser.process_nth_packet(500473);
-        // parser.process_nth_packet(10);
+        CMEParser parser(input_file, output_file);
+        // parser.process_nth_packet(1);
+        parser.process_packets(20000, 10000)
+;        // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
 
         /* VALIDATE PACKET PAYLOAD PARSING WITH CME EXAMPLE */
         // std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
         // std::vector<uint8_t> packet_data = parser.hex_string_to_vector(hex_stream);
         // try {
-        //     parser.parse_packet(packet_data);
+        //     parser.process_payload(packet_data);
         // } catch (const std::exception& e) {
         //     std::cerr << "error: " << e.what() << std::endl;
         // }
