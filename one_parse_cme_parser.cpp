@@ -1,5 +1,5 @@
 //
-// Created by hruks on 11/17/2024.
+// Created by Anton Charov on 11/17/2024.
 //
 
 #include "one_parse_cme_parser.h"
@@ -16,7 +16,7 @@
 #include <cstring>
 #include <iomanip>
 #include <string>
-#include "DebugUtil.h"
+#include "tools/DebugUtil.h"
 #include "MKTData/MessageHeader.h"
 using namespace std;
 
@@ -57,7 +57,7 @@ public:
             throw std::runtime_error("Unable to open CSV file: " + output_file);
         }
         // Write to CSV header
-        csv_file << "PacketNumber,Timestamp,msgSize,blockLength,templateID,schemaID,version,"
+        csv_file << "PacketNumber,Timestamp,msgSeqNum,sendingTime,msgSize,blockLength,templateID,schemaID,version,"
                  << "transactTime,matchEventIndicator,noMDEntries,numInGroup,highLimitPrice,lowLimitPrice\n";
     }
 
@@ -364,7 +364,21 @@ public:
     }
 
     // process N amount of packets
-    void process_packets(size_t total_packets, size_t batch_size) {
+    void process_packets(size_t total_packets, size_t batch_size, size_t start_packet = 1, size_t end_packet = 0) {
+        // Safety checks
+        if(batch_size > total_packets) {
+            throw std::runtime_error("Batch size of " + std::to_string(batch_size) + " is greater then " + std::to_string(total_packets) + " packets. Your batch size cannot be greater then your total packet count.");
+        }
+
+        if(batch_size < 1 || total_packets < 1) {
+            throw std::runtime_error("Batch size and total packets cannot be less than 1.");
+        }
+
+        if(end_packet != 0 && end_packet < start_packet) {
+            throw std::runtime_error("Your end packet number must be greater then your start packet number.");
+        }
+
+        // Does the file even exist?
         input_file.open(filename, ios::binary);
         if (!input_file.is_open()) {
             throw std::runtime_error("Unable to open file: " + filename);
@@ -374,19 +388,39 @@ public:
         input_file.ignore(24);
 
         std::vector<std::vector<std::string>> batch_data;
+
+        size_t current_packet = 1; // Start at the first packet
         size_t processed_packets = 0;
 
-        while (processed_packets < total_packets) {
+        // Default 'end_packet' to the total number of packets if not specified
+        if (end_packet == 0 || end_packet > total_packets) {
+            end_packet = total_packets;
+            if(end_packet < start_packet) {
+                throw std::runtime_error("Your end packet number must be greater then your start packet number. In this case, "
+                                         "it's likely that the total packets you set is lower than your end packet. The value"
+                                         " of your end packet number must fit within the total packet range (e.g. 1000 -> (0 to 10000)");
+            }
+        }
+
+        while (processed_packets < total_packets && current_packet <= end_packet) {
             PcapPacketHeader pcap_header;
             // Read the PCAP Packet Header
             input_file.read(reinterpret_cast<char*>(&pcap_header), sizeof(PcapPacketHeader));
             if (input_file.eof()) break;
+
+            // Skip packets outside the specified range
+            if (current_packet < start_packet) {
+                input_file.ignore(pcap_header.incl_len);
+                current_packet++;
+                continue;
+            }
+
             // Read the N-th packet payload (up to incl_len bytes)
             std::vector<uint8_t> packet_data(pcap_header.incl_len);
             input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
             if (input_file.eof()) break;
 
-            std::vector<std::string> row = process_single_packet(packet_data, processed_packets + 1, pcap_header);
+            std::vector<std::string> row = process_single_packet(packet_data, current_packet, pcap_header);
             batch_data.push_back(row);
 
             // Write in batches
@@ -396,6 +430,7 @@ public:
             }
 
             ++processed_packets;
+            ++current_packet;
         }
 
         // Write remaining data
@@ -502,9 +537,12 @@ int main() {
 
         CMEParser parser(input_file, output_file);
         // parser.process_nth_packet(1);
-        parser.process_packets(20000, 10000)
+        parser.process_packets(10000, 5000);
 ;        // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
+
+
+        std::cout << "Processing complete. Results written to " << output_file << std::endl;
 
         /* VALIDATE PACKET PAYLOAD PARSING WITH CME EXAMPLE */
         // std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
