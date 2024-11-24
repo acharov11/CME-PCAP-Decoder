@@ -18,6 +18,8 @@
 #include <string>
 #include "tools/DebugUtil.h"
 #include "MKTData/MessageHeader.h"
+#include "Logger.h"
+
 using namespace std;
 
 class CMEParser {
@@ -25,6 +27,8 @@ private:
     string filename;
     ifstream input_file;
     ofstream csv_file;
+
+    Logger logger_;
 
     bool advanced_debug = true;
 
@@ -51,11 +55,15 @@ private:
     };
 
 public:
-    CMEParser(const string& input_file, const string& output_file) : filename(input_file) {
+    CMEParser(const string& input_file, const string& output_file)
+    : filename(input_file) {
+        intialize_logger();
         csv_file.open(output_file);
         if(!csv_file.is_open()) {
+            logger_.log(Logger::ERROR, "Unable to open CSV file: " + output_file);
             throw std::runtime_error("Unable to open CSV file: " + output_file);
         }
+        logger_.log(Logger::INFO, "CSV file opened succesfully: " + output_file);
         // Write to CSV header
         csv_file << "PacketNumber,Timestamp,msgSeqNum,sendingTime,msgSize,blockLength,templateID,schemaID,version,"
                  << "transactTime,matchEventIndicator,noMDEntries,numInGroup,highLimitPrice,lowLimitPrice\n";
@@ -67,11 +75,12 @@ public:
         }
     }
 
-
-    /* @TODO
-     * implement way to select CSV vs print, logger, put all messages into CSV
-     * getting lots of MDInstrumentDefinitionOption template id 55? MDInstrumentDefinitionSpread56
-     */
+    void intialize_logger() {
+        logger_.enable_level(Logger::INFO);
+        // logger_.enable_level(Logger::DEBUG);
+        logger_.enable_level(Logger::ERROR);
+        logger_.enable_level(Logger::WARNING);
+    }
 
     // UTILITY FUNCTIONS
 
@@ -175,7 +184,7 @@ public:
     // PARSING
 
     std::vector<std::string> parse_template_50_LBM(const std::vector<uint8_t>& packet_data, size_t& offset) {
-        std::cout << "Parsing template 50_LBM..." << std::endl;
+        logger_.log(Logger::DEBUG, "Parsing template 50_LBM...");
 
         struct SBE_LBM {
             uint64_t transactTime;
@@ -208,18 +217,20 @@ public:
         sbe_lbm.securityID = extract_field<int32_t>(packet_data, offset);
         sbe_lbm.rptSeq = extract_field<uint32_t>(packet_data, offset);
 
-        std::cout << "\n==== SBE_LBM Message ====" << std::endl;
-        std::cout << "transactTime: " << sbe_lbm.transactTime << std::endl;
-        std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_lbm.matchEventIndicator) << std::dec << std::endl;
-        print_uint8_info(sbe_lbm.matchEventIndicator);
-        std::cout << "noMDEntries: " << sbe_lbm.noMDEntries << std::endl;
-        std::cout << "numInGroup: " << sbe_lbm.numInGroup << std::endl;
-        print_uint8_info(sbe_lbm.numInGroup);
-        std::cout << "highLimitPrice: " << sbe_lbm.highLimitPrice << std::endl;
-        std::cout << "lowLimitPrice: " << sbe_lbm.lowLimitPrice << std::endl;
-        std::cout << "maxPriceVariation: " << sbe_lbm.maxPriceVariation << std::endl;
-        std::cout << "securityID: " << sbe_lbm.securityID << std::endl;
-        std::cout << "rptSeq: " << sbe_lbm.rptSeq << std::endl;
+        if(logger_.is_level_enabled(Logger::DEBUG)) {
+            std::cout << "\n[DEBUG] ==== SBE_LBM Message ==== [DEBUG]" << std::endl;
+            std::cout << "transactTime: " << sbe_lbm.transactTime << std::endl;
+            std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_lbm.matchEventIndicator) << std::dec << std::endl;
+            print_uint8_info(sbe_lbm.matchEventIndicator);
+            std::cout << "noMDEntries: " << sbe_lbm.noMDEntries << std::endl;
+            std::cout << "numInGroup: " << sbe_lbm.numInGroup << std::endl;
+            print_uint8_info(sbe_lbm.numInGroup);
+            std::cout << "highLimitPrice: " << sbe_lbm.highLimitPrice << std::endl;
+            std::cout << "lowLimitPrice: " << sbe_lbm.lowLimitPrice << std::endl;
+            std::cout << "maxPriceVariation: " << sbe_lbm.maxPriceVariation << std::endl;
+            std::cout << "securityID: " << sbe_lbm.securityID << std::endl;
+            std::cout << "rptSeq: " << sbe_lbm.rptSeq << std::endl;
+        }
 
         std::vector<std::string> additional_fields(6,"");
         additional_fields[0] = sbe_lbm.transactTime;
@@ -236,7 +247,7 @@ public:
     // Further parses the rest of the packet payload based on templateID, will switch and choose
     // the correct one
     std::vector<std::string> parse_by_template_id(uint16_t templateID, const std::vector<uint8_t>& packet_data, size_t& offset) {
-        std::cout << "\n<<< Attempting to parse templateID [" << templateID << "] >>>" << std::endl;
+        if(logger_.is_level_enabled(Logger::DEBUG)) std::cout << "\n<<< Attempting to parse templateID [" << templateID << "] >>>" << std::endl;
         switch (templateID) {
             case 50:
                 return parse_template_50_LBM(packet_data, offset);
@@ -247,7 +258,7 @@ public:
             // break;
             // Add cases for other templateIDs
             default:
-                std::cerr << "Unknown templateID: " << templateID << std::endl;
+                if(logger_.is_level_enabled(Logger::DEBUG)) std::cerr << "Unknown templateID: " << templateID << std::endl;
             return vector<std::string>(6,"");
             break;
         }
@@ -275,9 +286,11 @@ public:
         tech_header.msgSeqNum = extract_field<uint32_t>(payload_data, offset);
         tech_header.sendingTime = extract_field<uint64_t>(payload_data, offset);
 
-        std::cout << "\n==== PCAP Technical Header ====" << std::endl;
-        std::cout << "msgSeqNum: " << tech_header.msgSeqNum << std::endl;
-        std::cout << "sendingTime: " << tech_header.sendingTime << std::endl;
+        if(logger_.is_level_enabled(Logger::DEBUG)) {
+            std::cout << "\n==== PCAP Technical Header ====" << std::endl;
+            std::cout << "msgSeqNum: " << tech_header.msgSeqNum << std::endl;
+            std::cout << "sendingTime: " << tech_header.sendingTime << std::endl;
+        }
 
         // Ensure enough data for CME Message header
         if (payload_data.size() < offset + sizeof(CMEMessageHeader)) {
@@ -292,12 +305,14 @@ public:
         cme_header.schemaID = extract_field<uint16_t>(payload_data,offset);
         cme_header.version = extract_field<uint16_t>(payload_data,offset);
 
-        std::cout << "\n==== CME Message Header ====" << std::endl;
-        std::cout << "msgSize: " << cme_header.msgSize << std::endl;
-        std::cout << "blockLength: " << cme_header.blockLength << std::endl;
-        std::cout << "templateID: " << cme_header.templateID << std::endl;
-        std::cout << "schemaID: " << cme_header.schemaID << std::endl;
-        std::cout << "version: " << cme_header.version << std::endl;
+        if(logger_.is_level_enabled(Logger::DEBUG)) {
+            std::cout << "\n==== CME Message Header ====" << std::endl;
+            std::cout << "msgSize: " << cme_header.msgSize << std::endl;
+            std::cout << "blockLength: " << cme_header.blockLength << std::endl;
+            std::cout << "templateID: " << cme_header.templateID << std::endl;
+            std::cout << "schemaID: " << cme_header.schemaID << std::endl;
+            std::cout << "version: " << cme_header.version << std::endl;
+        }
 
         // Build row with core fields
         row = {
@@ -328,7 +343,7 @@ public:
 
         // Now check whole payload
         if (packet_data.size() < 42) {
-            std::cerr << "Packet too small, skipping.\n";
+            if (logger_.is_level_enabled(Logger::ERROR)) std::cerr << "Packet too small, skipping.\n";
             row.push_back(std::to_string(packet_number)); // Packet number
             row.push_back(format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec)); // Timestamp
             row.insert(row.end(), 12, ""); // Fill the rest with blanks
@@ -365,6 +380,10 @@ public:
 
     // process N amount of packets
     void process_packets(size_t total_packets, size_t batch_size, size_t start_packet = 1, size_t end_packet = 0) {
+        logger_.log(Logger::INFO, "Processing " + std::to_string(total_packets) +  " packets from " + std::to_string(start_packet) +
+                                 " to " + std::to_string(end_packet) +
+                                 " in batches of " + std::to_string(batch_size));
+
         // Safety checks
         if(batch_size > total_packets) {
             throw std::runtime_error("Batch size of " + std::to_string(batch_size) + " is greater then " + std::to_string(total_packets) + " packets. Your batch size cannot be greater then your total packet count.");
@@ -391,6 +410,7 @@ public:
 
         size_t current_packet = 1; // Start at the first packet
         size_t processed_packets = 0;
+        size_t batches = 0;
 
         // Default 'end_packet' to the total number of packets if not specified
         if (end_packet == 0 || end_packet > total_packets) {
@@ -420,11 +440,17 @@ public:
             input_file.read(reinterpret_cast<char*>(packet_data.data()), pcap_header.incl_len);
             if (input_file.eof()) break;
 
-            std::vector<std::string> row = process_single_packet(packet_data, current_packet, pcap_header);
-            batch_data.push_back(row);
+            try {
+                std::vector<std::string> row = process_single_packet(packet_data, current_packet, pcap_header);
+                batch_data.push_back(row);
+            } catch (const std::exception& e) {
+                logger_.log(Logger::ERROR, "Error processing packet " + std::to_string(current_packet) + ": " + e.what());
+            }
 
             // Write in batches
             if (batch_data.size() >= batch_size) {
+                ++batches;
+                logger_.log(Logger::INFO, "Finished batch number " + std::to_string(batches) + " and processed " + std::to_string(processed_packets+1) + " packets.");
                 write_to_csv(batch_data);
                 batch_data.clear();
             }
@@ -439,6 +465,7 @@ public:
         }
 
         input_file.close();
+        logger_.log(Logger::INFO, "Finished processing packets.");
     }
 
     void process_nth_packet(size_t packet_number) {
@@ -527,22 +554,29 @@ public:
         std::cout << "\n <<<< END: PACKET [" << packet_number << "] END >>>>" << std::endl;
 
         input_file.close();
+
+        logger_.log(Logger::INFO, "END");
+        logger_.log(Logger::DEBUG, "END");
+        logger_.log(Logger::WARNING, "END");
+        logger_.log(Logger::ERROR, "END");
     }
 };
 
 int main() {
     try {
+        // Logger::LogLevel log_level = Logger::DEBUG;
+
         string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
         string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
         CMEParser parser(input_file, output_file);
         // parser.process_nth_packet(1);
-        parser.process_packets(10000, 5000);
+        parser.process_packets(100000, 10000);
 ;        // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
 
 
-        std::cout << "Processing complete. Results written to " << output_file << std::endl;
+        std::cout << "[SYSTEM] Processing complete. Results written to " << output_file << std::endl;
 
         /* VALIDATE PACKET PAYLOAD PARSING WITH CME EXAMPLE */
         // std::string hex_stream = "A6 BB 0A 00 5B 19 01 72 1E EF A9 16 38 00 0B 00 32 00 01 00 09 00 4B 52 E8 71 1E EF A9 16 00 00 00 20 00 01 FF FF FF FF FF FF FF 7F 00 90 CD 79 2F 08 00 00 00 E4 0B 54 02 00 00 00 F4 15 00 00 4D 07 00 00";
