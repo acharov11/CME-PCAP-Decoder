@@ -2,9 +2,10 @@
 // Created by hruks on 11/17/2024.
 //
 
-#include "fast_cme_parser.h"
+#include "../fast_cme_parser.h"
 
-#include "MDIncrementalRefreshOrderBook47.h"
+#include "../MKTData/MDIncrementalRefreshOrderBook47.h"
+#include "../MKTData/MDUpdateAction.h"
 
 
 
@@ -51,9 +52,16 @@ public:
         csv_file << "Timestamp,SecurityID,OrderID,Price,Quantity,Side,UpdateAction,Priority\n";
     }
 
-    void decode(const char* buffer, size_t length) {
-        MDIncrementalRefreshOrderBook47Decoder decoder;
-        decoder.wrapForDecode(buffer, 0, decoder.sbeBlockLength(), decoder.sbeSchemaVersion());
+    void decode(char* buffer, size_t length) {
+
+        mktdata::MDIncrementalRefreshOrderBook47 decoder;
+        decoder.wrapForDecode(
+            buffer,
+            0,
+            decoder.sbeBlockLength(),
+            decoder.sbeSchemaVersion(),
+            decoder.bufferLength()
+            );
 
         // Get message header information
         uint64_t transactTime = decoder.transactTime();
@@ -80,14 +88,14 @@ public:
             // Convert update action to string
             std::string actionStr;
             switch (updateAction) {
-                case MDUpdateAction::New: actionStr = "NEW"; break;
-                case MDUpdateAction::Change: actionStr = "CHANGE"; break;
-                case MDUpdateAction::Delete: actionStr = "DELETE"; break;
+                case mktdata::MDUpdateAction::New: actionStr = "NEW"; break;
+                case mktdata::MDUpdateAction::Change: actionStr = "CHANGE"; break;
+                case mktdata::MDUpdateAction::Delete: actionStr = "DELETE"; break;
                 default: actionStr = "UNKNOWN";
             }
 
             // Convert entry type to side
-            std::string side = (entryType == MDEntryTypeBook::Bid) ? "BID" : "ASK";
+            std::string side = (entryType == mktdata::MDEntryTypeBook::Bid) ? "BID" : "ASK";
 
             // Write to CSV
             csv_file << formattedTime << ","
@@ -104,21 +112,22 @@ public:
 };
 
 // Example usage
-int main() {
-    CMEOrderBookDecoder decoder("orderbook.csv");
-
-    // Read your binary file and process it
-    std::ifstream input("mbofd.raw", std::ios::binary);
-    if (input.is_open()) {
-        // Read file in chunks
-        constexpr size_t BUFFER_SIZE = 8192;
-        char buffer[BUFFER_SIZE];
-
-        while (input.read(buffer, BUFFER_SIZE)) {
-            size_t bytesRead = input.gcount();
-            decoder.decode(buffer, bytesRead);
-        }
-        input.close();
-    }
-    return 0;
-}
+// int main() {
+//     CMEOrderBookDecoder decoder("result.csv");
+//
+//     // Read your binary file and process it
+//
+//     std::ifstream input("data/", std::ios::binary);
+//     if (input.is_open()) {
+//         // Read file in chunks
+//         constexpr size_t BUFFER_SIZE = 8192;
+//         char buffer[BUFFER_SIZE];
+//
+//         while (input.read(buffer, BUFFER_SIZE)) {
+//             size_t bytesRead = input.gcount();
+//             decoder.decode(buffer, bytesRead);
+//         }
+//         input.close();
+//     }
+//     return 0;
+// }
