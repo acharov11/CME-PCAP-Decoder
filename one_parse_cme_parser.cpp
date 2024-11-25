@@ -202,7 +202,7 @@ public:
 
     // PARSING
 
-    std::vector<std::string> parse_template_50_LBM(const std::vector<uint8_t>& packet_data, size_t& offset) {
+    std::vector<std::string> parse_template_50_FULL(const std::vector<uint8_t>& packet_data, size_t& offset) {
         logger_.log(Logger::DEBUG, "Parsing template 50_LBM...");
 
         struct SBE_LBM {
@@ -261,6 +261,65 @@ public:
         return additional_fields;
     }
 
+    std::vector<std::string> parse_template_55_FULL(const std::vector<uint8_t>& packet_data, size_t& offset) {
+        logger_.log(Logger::DEBUG, "Parsing template 55_O...");
+
+        struct SBE_O_55 {
+            uint8_t matchEventIndicator;
+            uint32_t totNumReports;
+            int8_t securityUpdateAction;
+            uint64_t lastUpdateTime;
+            int32_t mDSecurityTradingStatus;
+            int16_t appID;
+            uint8_t marketSegmentID;
+            uint8_t underlyingProduct;
+        };
+
+        SBE_O_55 sbe_55;
+
+        sbe_55.matchEventIndicator = extract_field<uint8_t>(packet_data,offset);
+        sbe_55.totNumReports = extract_field<uint32_t>(packet_data,offset);
+        sbe_55.securityUpdateAction = extract_field<int8_t>(packet_data,offset);
+        std::string securityUpdateActionStr(1,static_cast<char>(sbe_55.securityUpdateAction));
+        sbe_55.lastUpdateTime = extract_field<uint64_t>(packet_data,offset);
+        sbe_55.mDSecurityTradingStatus = extract_field<int32_t>(packet_data, offset);
+        sbe_55.appID = extract_field<int16_t>(packet_data, offset);
+        sbe_55.marketSegmentID = extract_field<uint8_t>(packet_data, offset);
+        sbe_55.underlyingProduct = extract_field<uint8_t>(packet_data, offset);
+
+        if(logger_.is_level_enabled(Logger::INFO)) {
+            std::cout << "\n[DEBUG] ==== SBE_LBM Message ==== [DEBUG]" << std::endl;
+            // std::cout << "transactTime: " << sbe_55.transactTime << std::endl;
+            std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_55.matchEventIndicator) << std::dec << std::endl;
+            print_uint8_info(sbe_55.matchEventIndicator);
+            std::cout << "totNumReports: " << sbe_55.totNumReports << std::endl;
+            print_uint8_info(sbe_55.totNumReports);
+            std::cout << "securityUpdateAction: " << sbe_55.securityUpdateAction << std::endl;
+            print_uint8_info(sbe_55.securityUpdateAction);
+            std::cout << "lastUpdateTime: " << sbe_55.lastUpdateTime << std::endl;
+            std::cout << "mDSecurityTradingStatus: " << sbe_55.mDSecurityTradingStatus << std::endl;
+            std::cout << "appID: " << sbe_55.appID << std::endl;
+            std::cout << "marketSegmentID: " << sbe_55.marketSegmentID << std::endl;
+            print_uint8_info(sbe_55.marketSegmentID);
+            std::cout << "underlyingProduct: " << sbe_55.underlyingProduct << std::endl;
+            print_uint8_info(sbe_55.underlyingProduct);
+        }
+
+        std::vector<std::string> row;
+        row = {
+            std::to_string(sbe_55.matchEventIndicator),
+            std::to_string(sbe_55.totNumReports),
+            securityUpdateActionStr,
+            std::to_string(sbe_55.lastUpdateTime),
+            std::to_string(sbe_55.mDSecurityTradingStatus),
+            std::to_string(sbe_55.appID),
+            std::to_string(sbe_55.marketSegmentID),
+            std::to_string(sbe_55.underlyingProduct)
+        };
+
+        return row;
+    }
+
 
 
     // Further parses the rest of the packet payload based on templateID, will switch and choose
@@ -269,8 +328,10 @@ public:
         if(logger_.is_level_enabled(Logger::DEBUG)) std::cout << "\n<<< Attempting to parse templateID [" << templateID << "] >>>" << std::endl;
         switch (templateID) {
             case 50:
-                return parse_template_50_LBM(packet_data, offset);
+                return parse_template_50_FULL(packet_data, offset);
             break;
+            case 55:
+                return parse_template_55_FULL(packet_data, offset);
             // case 2:
             //     // parse_template_2(packet_data, offset);
             //     std::cout << "parsing case 2" << std::endl;
@@ -636,8 +697,8 @@ int main() {
         };
 
         CMEParser parser(input_file, output_file, allowed_templates, custom_header);
-        // parser.process_nth_packet(1);
-        parser.process_packets(1000000, 100000);
+        parser.process_nth_packet(5);
+        // parser.process_packets(1000000, 100000);
 ;        // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
 
