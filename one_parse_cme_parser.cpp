@@ -137,6 +137,8 @@ public:
 
         T field;
         std::memcpy(&field, data.data() + offset, sizeof(T));
+        // logger_.log(Logger::FOCUS, "offset: " + offset + " value: " + );
+        cout << "[SPECIAL DEBUG] offset: " << offset << " value: " << field << hex << "     " << field << dec << endl;
         offset += sizeof(T);
         return field;
     }
@@ -151,11 +153,22 @@ public:
 
     // Extract a custom N-length string field from a std::vector<uint8_t> and automatically advanced offset
     std::string extract_fixed_length_string(size_t length, const std::vector<uint8_t>& data, size_t& offset) {
+        // exclusive?
+
         if (offset + length > data.size()) {
             throw std::runtime_error("Not enough data to extract string");
         }
 
+
+
         std::string result(reinterpret_cast<const char*>(data.data() + offset), length);
+        cout << "[SPECIAL DEBUG] offset: " << offset << " value: " << result << " ";
+        for (size_t i = offset; i < offset + length; ++i) {
+            cout << " " << static_cast<int>(data.at(i));
+        }
+        cout << endl;
+
+
         offset += length;
         return result;
     }
@@ -328,7 +341,7 @@ public:
             string symbol;                // Offset 35: Instrument name or symbol.
 
             int32_t securityID;             // Offset 55: Unique instrument ID.
-            char securityIDSource;          // Offset 59: Source of security ID (always '8').
+            int8_t securityIDSource;          // Offset 59: Source of security ID (always '8').
             string securityType;           // Offset 60: Security type (e.g., "FUT").
             string cFICode;                // Offset 66: ISO categorization code.
             int8_t putOrCall;               // Offset 72: Option type (0=Put, 1=Call).
@@ -371,59 +384,78 @@ public:
         SBE_O_55 sbe_55;
 
         // Extract fields
-        sbe_55.matchEventIndicator = extract_field<uint8_t>(packet_data,offset);
-        sbe_55.totNumReports = extract_field<uint32_t>(packet_data,offset);
-        sbe_55.securityUpdateAction = extract_field<int8_t>(packet_data,offset);
-        std::string securityUpdateActionStr(1,static_cast<char>(sbe_55.securityUpdateAction));
-        sbe_55.lastUpdateTime = extract_field<uint64_t>(packet_data,offset);
+        sbe_55.matchEventIndicator = extract_field<uint8_t>(packet_data, offset);
+        sbe_55.totNumReports = extract_field<uint32_t>(packet_data, offset);
+        if (sbe_55.totNumReports == 0xFFFFFFFF) {
+            sbe_55.totNumReports = 0; // Handle null value
+        }
+
+        sbe_55.securityUpdateAction = extract_field<int8_t>(packet_data, offset);
+        std::string securityUpdateActionStr(1, static_cast<char>(sbe_55.securityUpdateAction));
+        if (sbe_55.securityUpdateAction != 'A' && sbe_55.securityUpdateAction != 'D' && sbe_55.securityUpdateAction != 'M') {
+            std::cerr << "\n[WARN] Invalid securityUpdateAction: " << static_cast<int>(sbe_55.securityUpdateAction) << std::endl;
+        }
+
+        sbe_55.lastUpdateTime = extract_field<uint64_t>(packet_data, offset);
+        // if (sbe_55.lastUpdateTime > 1e18) { // Check for implausible timestamp
+        //     std::cerr << "\n[WARN] Invalid lastUpdateTime: " << sbe_55.lastUpdateTime << std::endl;
+        //     sbe_55.lastUpdateTime = 0;
+        // }
+
         sbe_55.mDSecurityTradingStatus = extract_field<int8_t>(packet_data, offset);
+        if (sbe_55.mDSecurityTradingStatus < 0 || sbe_55.mDSecurityTradingStatus > 103) {
+            std::cerr << "\n[WARN] Invalid mDSecurityTradingStatus: " << static_cast<int>(sbe_55.mDSecurityTradingStatus) << std::endl;
+        }
+
         sbe_55.appID = extract_field<int16_t>(packet_data, offset);
         sbe_55.marketSegmentID = extract_field<uint8_t>(packet_data, offset);
         sbe_55.underlyingProduct = extract_field<uint8_t>(packet_data, offset);
+        if (sbe_55.underlyingProduct > 17) {
+            std::cerr << "\n[WARN] Invalid underlyingProduct: " << static_cast<int>(sbe_55.underlyingProduct) << std::endl;
+        }
 
         sbe_55.securityExchange = extract_fixed_length_string(4, packet_data, offset);
         sbe_55.securityGroup = extract_fixed_length_string(6, packet_data, offset);
         sbe_55.asset = extract_fixed_length_string(6, packet_data, offset);
-        sbe_55.symbol = extract_fixed_length_string(20, packet_data, offset);
+        sbe_55.symbol = extract_fixed_length_string(19, packet_data, offset);
 
         sbe_55.securityID = extract_field<int32_t>(packet_data, offset);
-        sbe_55.securityIDSource = extract_field<char>(packet_data, offset);
+        sbe_55.securityIDSource = extract_field<int8_t>(packet_data, offset);
+        if (sbe_55.securityIDSource != '8') { // '8' is the expected value for CME
+            std::cerr << "\n[WARN] Invalid securityIDSource: " << static_cast<int>(sbe_55.securityIDSource) << std::endl;
+        }
+
         sbe_55.securityType = extract_fixed_length_string(6, packet_data, offset);
         sbe_55.cFICode = extract_fixed_length_string(6, packet_data, offset);
+
         sbe_55.putOrCall = extract_field<int8_t>(packet_data, offset);
+        if (sbe_55.putOrCall != 0 && sbe_55.putOrCall != 1) {
+            std::cerr << "\n[WARN] Invalid putOrCall: " << static_cast<int>(sbe_55.putOrCall) << std::endl;
+        }
+
         sbe_55.maturityMonthYear = extract_fixed_length_string(5, packet_data, offset);
+        if (sbe_55.maturityMonthYear.length() < 4 || !std::isdigit(sbe_55.maturityMonthYear[0])) {
+            std::cerr << "\n[WARN] Invalid maturityMonthYear: " << sbe_55.maturityMonthYear << std::endl;
+        }
+
         sbe_55.currency = extract_fixed_length_string(3, packet_data, offset);
 
         sbe_55.strikePrice = extract_field<int64_t>(packet_data, offset);
+        if (sbe_55.strikePrice == 0x7FFFFFFFFFFFFFFF) {
+            sbe_55.strikePrice = 0; // Handle null value
+        }
         sbe_55.strikeCurrency = extract_fixed_length_string(3, packet_data, offset);
         sbe_55.settlCurrency = extract_fixed_length_string(3, packet_data, offset);
+
         sbe_55.minCabPrice = extract_field<int64_t>(packet_data, offset);
+        if (sbe_55.minCabPrice == 0x7FFFFFFFFFFFFFFF) {
+            sbe_55.minCabPrice = 0; // Handle null value
+        }
 
         // DEBUG to INFO
         if(logger_.is_level_enabled(Logger::FOCUS)) {
             std::cout << "\n[DEBUG] ==== 55 Message ==== [DEBUG]" << std::endl;
-            // std::cout << "transactTime: " << sbe_55.transactTime << std::endl;
-            // std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_55.matchEventIndicator) << std::dec << std::endl;
-            // print_uint8_info(sbe_55.matchEventIndicator);
-            // std::cout << "totNumReports: " << sbe_55.totNumReports << std::endl;
-            // print_uint8_info(sbe_55.totNumReports);
-            // std::cout << "securityUpdateAction: " << sbe_55.securityUpdateAction << std::endl;
-            // // print_uint8_info(sbe_55.securityUpdateAction);
-            // std::cout << "lastUpdateTime: " << sbe_55.lastUpdateTime << std::endl;
-            // std::cout << "mDSecurityTradingStatus: " << std::hex << static_cast<int>(sbe_55.mDSecurityTradingStatus) << std::dec << std::endl;
-            // print_uint8_info(sbe_55.mDSecurityTradingStatus);
-            // std::cout << "appID: " << sbe_55.appID << std::endl;
-            // std::cout << "marketSegmentID: " << sbe_55.marketSegmentID << std::endl;
-            // print_uint8_info(sbe_55.marketSegmentID);
-            // std::cout << "underlyingProduct: " << sbe_55.underlyingProduct << std::endl;
-            // print_uint8_info(sbe_55.underlyingProduct);
-            // std::cout << "securityExchange: " << sbe_55.securityExchange << std::endl;
-            // std::cout << "securityGroup: " << sbe_55.securityGroup << std::endl;
-            // std::cout << "asset: " << sbe_55.asset << std::endl;
-            // std::cout << "symbol: " << sbe_55.symbol << std::endl;
-            // std::cout << "strikePrice: " << sbe_55.strikePrice << std::endl;
-            // int8_t strikePriceExponent = -9; // Constant exponent
-            // print_price_with_exponent(sbe_55.strikePrice, strikePriceExponent, "strikePrice");
+
             debug_field("matchEventIndicator", sbe_55.matchEventIndicator);
             debug_field("totNumReports", sbe_55.totNumReports);
             debug_field("securityUpdateAction", sbe_55.securityUpdateAction);
@@ -436,7 +468,18 @@ public:
             debug_field("securityGroup", sbe_55.securityGroup);
             debug_field("asset", sbe_55.asset);
             debug_field("symbol", sbe_55.symbol);
-            debug_price_with_exponent("strikePrice", sbe_55.strikePrice, -9); // Constant exponent
+            debug_field("securityID",sbe_55.securityID);
+            debug_field("securityIDSource",sbe_55.securityIDSource);
+            debug_field("securityType",sbe_55.securityType);
+            debug_field("cFICode",sbe_55.cFICode);
+            debug_field("putOrCall",sbe_55.putOrCall);
+            debug_field("maturityMonthYear",sbe_55.maturityMonthYear);
+            debug_field("currency",sbe_55.currency);
+            debug_price_with_exponent("strikePrice", sbe_55.strikePrice, -9);
+            debug_field("strikeCurrency",sbe_55.strikeCurrency);
+            debug_field("settlCurrency",sbe_55.settlCurrency);
+            debug_price_with_exponent("minCabPrice", sbe_55.minCabPrice, -9);
+            debug_field()
         }
 
         std::vector<std::string> row;
@@ -448,7 +491,11 @@ public:
             std::to_string(sbe_55.mDSecurityTradingStatus),
             std::to_string(sbe_55.appID),
             std::to_string(sbe_55.marketSegmentID),
-            std::to_string(sbe_55.underlyingProduct)
+            std::to_string(sbe_55.underlyingProduct),
+            sbe_55.asset,
+            sbe_55.symbol,
+            to_string(sbe_55.putOrCall)
+
         };
 
         return row;
@@ -777,7 +824,7 @@ public:
         // Print the raw byte stream
         if(advanced_debug) {
             std::cout << "\n ==== [" << packet_number << "] Raw Byte Stream ====" << std::endl;
-            const int NUM_ROWS_PRINT = 3;
+            const int NUM_ROWS_PRINT = 100000000;
             int row_printed_count = 0;
             for (size_t i = 0; i < packet_data.size(); ++i) {
                 std::cout << std::hex << std::setw(2) << std::setfill('0')
