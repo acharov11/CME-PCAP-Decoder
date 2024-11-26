@@ -18,6 +18,8 @@
 #include <string>
 #include <set>
 #include <map>
+#include <type_traits>
+#include <bitset>
 #include "tools/DebugUtil.h"
 #include "MKTData/MessageHeader.h"
 #include "Logger.h"
@@ -88,6 +90,7 @@ public:
 
     void intialize_logger() {
         logger_.enable_level(Logger::INFO);
+        logger_.enable_level(Logger::FOCUS);
         // logger_.enable_level(Logger::DEBUG);
         logger_.enable_level(Logger::ERROR);
         logger_.enable_level(Logger::WARNING);
@@ -191,6 +194,50 @@ public:
         std::cout << std::dec << std::endl;
     }
 
+    // print price with consideration of exponent
+    void print_price_with_exponent(int64_t mantissa, int8_t exponent, const std::string& field_name) {
+        // Check for null value
+        if (mantissa == INT64_MAX) {
+            std::cout << field_name << ": NULL" << std::endl;
+            return;
+        }
+
+        // Compute the value using the exponent
+        double price = mantissa * std::pow(10, exponent);
+
+        // Print the result
+        std::cout << field_name << ": " << price << std::endl;
+    }
+
+    // Generalized debug function
+    template <typename T>
+    void debug_field(const std::string& field_name, const T& value) {
+        std::cout << std::left << std::setw(25) << field_name << ": " << value << std::endl;
+    }
+
+    // Specialization for uint8_t to print as integer and binary
+    void debug_field(const std::string& field_name, uint8_t value) {
+        std::cout << std::left << std::setw(25) << field_name << ": "
+                  << static_cast<int>(value) << " (0b" << std::bitset<8>(value) << ")" << std::endl;
+    }
+
+    // Specialization for int8_t to print as integer
+    void debug_field(const std::string& field_name, int8_t value) {
+        std::cout << std::left << std::setw(25) << field_name << ": " << static_cast<int>(value) << std::endl;
+    }
+
+    // Specialization for string
+    void debug_field(const std::string& field_name, const std::string& value) {
+        std::cout << std::left << std::setw(25) << field_name << ": " << value << std::endl;
+    }
+
+    // Debug price with exponent
+    void debug_price_with_exponent(const std::string& field_name, int64_t price, int8_t exponent) {
+        double real_price = static_cast<double>(price) * std::pow(10, exponent);
+        std::cout << std::left << std::setw(25) << field_name << ": " << price
+                  << " (Exponent: " << static_cast<int>(exponent) << ", Real: " << real_price << ")" << std::endl;
+    }
+
     // Print unique template IDs and their counts
     void print_template_statistics() {
         logger_.log(Logger::INFO, "Template Statistics");
@@ -265,44 +312,131 @@ public:
         logger_.log(Logger::DEBUG, "Parsing template 55_O...");
 
         struct SBE_O_55 {
-            uint8_t matchEventIndicator;
-            uint32_t totNumReports;
-            int8_t securityUpdateAction;
-            uint64_t lastUpdateTime;
-            int32_t mDSecurityTradingStatus;
-            int16_t appID;
-            uint8_t marketSegmentID;
-            uint8_t underlyingProduct;
+            uint8_t matchEventIndicator;    // Offset 0: Bitmap field reflecting updates for a Globex event.
+            uint32_t totNumReports;         // Offset 1: Total instruments in Replay loop.
+            int8_t securityUpdateAction;    // Offset 5: Last Security update action ('A', 'D', 'M').
+            uint64_t lastUpdateTime;        // Offset 6: Timestamp of last addition/modification/deletion.
+            int8_t mDSecurityTradingStatus; // Offset 14: Current state of the instrument.
+            int16_t appID;                 // Offset 15: Channel ID from configuration file.
+            uint8_t marketSegmentID;        // Offset 17: Market segment identifier.
+            uint8_t underlyingProduct;      // Offset 18: Product complex identifier.
+
+            // Fixed-length strings for alphanumeric fields
+            string securityExchange;       // Offset 19: Exchange identifier (e.g., "XCME").
+            string securityGroup;          // Offset 23: Security group code.
+            string asset;                  // Offset 29: Underlying asset code.
+            string symbol;                // Offset 35: Instrument name or symbol.
+
+            int32_t securityID;             // Offset 55: Unique instrument ID.
+            char securityIDSource;          // Offset 59: Source of security ID (always '8').
+            string securityType;           // Offset 60: Security type (e.g., "FUT").
+            string cFICode;                // Offset 66: ISO categorization code.
+            int8_t putOrCall;               // Offset 72: Option type (0=Put, 1=Call).
+            string maturityMonthYear;      // Offset 73: Contract maturity date (YYYYMM format).
+            string currency;               // Offset 78: ISO currency code.
+
+            int64_t strikePrice;            // Offset 80: Strike price (null for non-options).
+            string strikeCurrency;         // Offset 88: Currency of strike price.
+            string settlCurrency;          // Offset 91: Settlement currency.
+            int64_t minCabPrice;            // Offset 94: Minimum cabinet price.
+
+            char matchAlgorithm;            // Offset 102: Matching algorithm ('F', 'K', etc.).
+            uint32_t minTradeVol;           // Offset 103: Minimum trade volume.
+            uint32_t maxTradeVol;           // Offset 107: Maximum trade volume.
+
+            int64_t minPriceIncrement;      // Offset 111: Minimum price tick.
+            int64_t minPriceIncrementAmount;// Offset 119: Monetary value of price tick.
+            float displayFactor;            // Offset 127: Multiplier for converting price.
+
+            int8_t tickRule;                // Offset 135: Tick table reference.
+            uint8_t mainFraction;           // Offset 136: Main price fraction denominator.
+            uint8_t subFraction;            // Offset 137: Sub price fraction denominator.
+            uint8_t priceDisplayFormat;     // Offset 138: Number of decimals in display price.
+
+            string unitOfMeasure;         // Offset 139: Unit of measure (e.g., megawatts).
+            float unitOfMeasureQty;         // Offset 169: Contract size per unit.
+            int64_t tradingReferencePrice;  // Offset 177: Reference price (settlement price).
+
+            uint8_t settlPriceType;         // Offset 185: Settlement price type (bitmap).
+            int32_t clearedVolume;          // Offset 186: Cleared volume from prior session.
+            int32_t openInterestQty;        // Offset 190: Open interest from prior session.
+
+            int64_t lowLimitPrice;          // Offset 194: Lowest allowable price for the day.
+            int64_t highLimitPrice;         // Offset 202: Highest allowable price for the day.
+
+            char userDefinedInstrument;     // Offset 210: User-defined instrument flag ('Y' or 'N').
+            uint16_t tradingReferenceDate;  // Offset 211: Session date for settlement price.
         };
 
         SBE_O_55 sbe_55;
 
+        // Extract fields
         sbe_55.matchEventIndicator = extract_field<uint8_t>(packet_data,offset);
         sbe_55.totNumReports = extract_field<uint32_t>(packet_data,offset);
         sbe_55.securityUpdateAction = extract_field<int8_t>(packet_data,offset);
         std::string securityUpdateActionStr(1,static_cast<char>(sbe_55.securityUpdateAction));
         sbe_55.lastUpdateTime = extract_field<uint64_t>(packet_data,offset);
-        sbe_55.mDSecurityTradingStatus = extract_field<int32_t>(packet_data, offset);
+        sbe_55.mDSecurityTradingStatus = extract_field<int8_t>(packet_data, offset);
         sbe_55.appID = extract_field<int16_t>(packet_data, offset);
         sbe_55.marketSegmentID = extract_field<uint8_t>(packet_data, offset);
         sbe_55.underlyingProduct = extract_field<uint8_t>(packet_data, offset);
 
-        if(logger_.is_level_enabled(Logger::INFO)) {
-            std::cout << "\n[DEBUG] ==== SBE_LBM Message ==== [DEBUG]" << std::endl;
+        sbe_55.securityExchange = extract_fixed_length_string(4, packet_data, offset);
+        sbe_55.securityGroup = extract_fixed_length_string(6, packet_data, offset);
+        sbe_55.asset = extract_fixed_length_string(6, packet_data, offset);
+        sbe_55.symbol = extract_fixed_length_string(20, packet_data, offset);
+
+        sbe_55.securityID = extract_field<int32_t>(packet_data, offset);
+        sbe_55.securityIDSource = extract_field<char>(packet_data, offset);
+        sbe_55.securityType = extract_fixed_length_string(6, packet_data, offset);
+        sbe_55.cFICode = extract_fixed_length_string(6, packet_data, offset);
+        sbe_55.putOrCall = extract_field<int8_t>(packet_data, offset);
+        sbe_55.maturityMonthYear = extract_fixed_length_string(5, packet_data, offset);
+        sbe_55.currency = extract_fixed_length_string(3, packet_data, offset);
+
+        sbe_55.strikePrice = extract_field<int64_t>(packet_data, offset);
+        sbe_55.strikeCurrency = extract_fixed_length_string(3, packet_data, offset);
+        sbe_55.settlCurrency = extract_fixed_length_string(3, packet_data, offset);
+        sbe_55.minCabPrice = extract_field<int64_t>(packet_data, offset);
+
+        // DEBUG to INFO
+        if(logger_.is_level_enabled(Logger::FOCUS)) {
+            std::cout << "\n[DEBUG] ==== 55 Message ==== [DEBUG]" << std::endl;
             // std::cout << "transactTime: " << sbe_55.transactTime << std::endl;
-            std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_55.matchEventIndicator) << std::dec << std::endl;
-            print_uint8_info(sbe_55.matchEventIndicator);
-            std::cout << "totNumReports: " << sbe_55.totNumReports << std::endl;
-            print_uint8_info(sbe_55.totNumReports);
-            std::cout << "securityUpdateAction: " << sbe_55.securityUpdateAction << std::endl;
-            print_uint8_info(sbe_55.securityUpdateAction);
-            std::cout << "lastUpdateTime: " << sbe_55.lastUpdateTime << std::endl;
-            std::cout << "mDSecurityTradingStatus: " << sbe_55.mDSecurityTradingStatus << std::endl;
-            std::cout << "appID: " << sbe_55.appID << std::endl;
-            std::cout << "marketSegmentID: " << sbe_55.marketSegmentID << std::endl;
-            print_uint8_info(sbe_55.marketSegmentID);
-            std::cout << "underlyingProduct: " << sbe_55.underlyingProduct << std::endl;
-            print_uint8_info(sbe_55.underlyingProduct);
+            // std::cout << "matchEventIndicator: " << std::hex << static_cast<int>(sbe_55.matchEventIndicator) << std::dec << std::endl;
+            // print_uint8_info(sbe_55.matchEventIndicator);
+            // std::cout << "totNumReports: " << sbe_55.totNumReports << std::endl;
+            // print_uint8_info(sbe_55.totNumReports);
+            // std::cout << "securityUpdateAction: " << sbe_55.securityUpdateAction << std::endl;
+            // // print_uint8_info(sbe_55.securityUpdateAction);
+            // std::cout << "lastUpdateTime: " << sbe_55.lastUpdateTime << std::endl;
+            // std::cout << "mDSecurityTradingStatus: " << std::hex << static_cast<int>(sbe_55.mDSecurityTradingStatus) << std::dec << std::endl;
+            // print_uint8_info(sbe_55.mDSecurityTradingStatus);
+            // std::cout << "appID: " << sbe_55.appID << std::endl;
+            // std::cout << "marketSegmentID: " << sbe_55.marketSegmentID << std::endl;
+            // print_uint8_info(sbe_55.marketSegmentID);
+            // std::cout << "underlyingProduct: " << sbe_55.underlyingProduct << std::endl;
+            // print_uint8_info(sbe_55.underlyingProduct);
+            // std::cout << "securityExchange: " << sbe_55.securityExchange << std::endl;
+            // std::cout << "securityGroup: " << sbe_55.securityGroup << std::endl;
+            // std::cout << "asset: " << sbe_55.asset << std::endl;
+            // std::cout << "symbol: " << sbe_55.symbol << std::endl;
+            // std::cout << "strikePrice: " << sbe_55.strikePrice << std::endl;
+            // int8_t strikePriceExponent = -9; // Constant exponent
+            // print_price_with_exponent(sbe_55.strikePrice, strikePriceExponent, "strikePrice");
+            debug_field("matchEventIndicator", sbe_55.matchEventIndicator);
+            debug_field("totNumReports", sbe_55.totNumReports);
+            debug_field("securityUpdateAction", sbe_55.securityUpdateAction);
+            debug_field("lastUpdateTime", sbe_55.lastUpdateTime);
+            debug_field("mDSecurityTradingStatus", sbe_55.mDSecurityTradingStatus);
+            debug_field("appID", sbe_55.appID);
+            debug_field("marketSegmentID", sbe_55.marketSegmentID);
+            debug_field("underlyingProduct", sbe_55.underlyingProduct);
+            debug_field("securityExchange", sbe_55.securityExchange);
+            debug_field("securityGroup", sbe_55.securityGroup);
+            debug_field("asset", sbe_55.asset);
+            debug_field("symbol", sbe_55.symbol);
+            debug_price_with_exponent("strikePrice", sbe_55.strikePrice, -9); // Constant exponent
         }
 
         std::vector<std::string> row;
@@ -669,11 +803,6 @@ public:
         std::cout << "\n <<<< END: PACKET [" << packet_number << "] END >>>>" << std::endl;
 
         input_file.close();
-
-        logger_.log(Logger::INFO, "END");
-        logger_.log(Logger::DEBUG, "END");
-        logger_.log(Logger::WARNING, "END");
-        logger_.log(Logger::ERROR, "END");
     }
 };
 
@@ -699,7 +828,7 @@ int main() {
         CMEParser parser(input_file, output_file, allowed_templates, custom_header);
         parser.process_nth_packet(5);
         // parser.process_packets(1000000, 100000);
-;        // parser.process_nth_packet(10);
+        // // parser.process_nth_packet(10);
         // parser.process_nth_packet(21);
 
         // Print template statistics

@@ -12,7 +12,7 @@
 
 class Logger {
 public:
-    enum LogLevel { DEBUG = 0, INFO, WARNING, ERROR, MAX_LOG_LEVELS };
+    enum LogLevel { DEBUG = 0, INFO, WARNING, ERROR, FOCUS, MAX_LOG_LEVELS };
 
     Logger(bool log_to_file = false, const std::string& file_name = "")
         : log_to_file(log_to_file) {
@@ -70,6 +70,7 @@ private:
             case INFO: return "INFO";
             case WARNING: return "WARNING";
             case ERROR: return "ERROR";
+            case FOCUS: return "FOCUS";
             default: return "UNKNOWN";
         }
     }
