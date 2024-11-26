@@ -127,6 +127,15 @@ public:
         return oss.str();
     }
 
+    // Utility to format bytes as a string for debug output
+    std::string format_bytes(const std::vector<uint8_t>& data, size_t offset, size_t size) {
+        std::ostringstream byte_stream;
+        for (size_t i = offset; i < offset + size; ++i) {
+            byte_stream << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(data[i]) << " ";
+        }
+        return byte_stream.str();
+    }
+
     // Util function to extract a field from a std::vector<uint8_t> at a specific offset and
     // advance offset automatically
     template <typename T>
@@ -138,7 +147,7 @@ public:
         T field;
         std::memcpy(&field, data.data() + offset, sizeof(T));
         // logger_.log(Logger::FOCUS, "offset: " + offset + " value: " + );
-        cout << "[SPECIAL DEBUG] offset: " << offset << " value: " << field << hex << "     " << field << dec << endl;
+        // cout << "[SPECIAL DEBUG] offset: " << offset << " value: " << field << hex << "     " << field << dec << endl;
         offset += sizeof(T);
         return field;
     }
@@ -162,7 +171,7 @@ public:
 
 
         std::string result(reinterpret_cast<const char*>(data.data() + offset), length);
-        cout << "[SPECIAL DEBUG] offset: " << offset << " value: " << result << " ";
+        // cout << "[SPECIAL DEBUG] offset: " << offset << " value: " << result << " ";
         for (size_t i = offset; i < offset + length; ++i) {
             cout << " " << static_cast<int>(data.at(i));
         }
@@ -249,6 +258,19 @@ public:
         double real_price = static_cast<double>(price) * std::pow(10, exponent);
         std::cout << std::left << std::setw(25) << field_name << ": " << price
                   << " (Exponent: " << static_cast<int>(exponent) << ", Real: " << real_price << ")" << std::endl;
+    }
+
+    // Debug string with byte representation
+    void debug_string_with_bytes(const std::string& field_name, const std::string& value) {
+        std::ostringstream byte_stream;
+
+        // Convert each character to its hexadecimal representation
+        for (unsigned char c : value) {
+            byte_stream << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c) << " ";
+        }
+
+        std::cout << std::left << std::setw(25) << field_name << ": " << value
+                  << " [Bytes: " << byte_stream.str() << "]" << std::endl;
     }
 
     // Print unique template IDs and their counts
@@ -377,8 +399,10 @@ public:
             int64_t lowLimitPrice;          // Offset 194: Lowest allowable price for the day.
             int64_t highLimitPrice;         // Offset 202: Highest allowable price for the day.
 
-            char userDefinedInstrument;     // Offset 210: User-defined instrument flag ('Y' or 'N').
+            uint8_t userDefinedInstrument;     // Offset 210: User-defined instrument flag ('Y' or 'N').
             uint16_t tradingReferenceDate;  // Offset 211: Session date for settlement price.
+
+            uint64_t instrumentGUID;
         };
 
         SBE_O_55 sbe_55;
@@ -403,9 +427,9 @@ public:
         // }
 
         sbe_55.mDSecurityTradingStatus = extract_field<int8_t>(packet_data, offset);
-        if (sbe_55.mDSecurityTradingStatus < 0 || sbe_55.mDSecurityTradingStatus > 103) {
-            std::cerr << "\n[WARN] Invalid mDSecurityTradingStatus: " << static_cast<int>(sbe_55.mDSecurityTradingStatus) << std::endl;
-        }
+        // if (sbe_55.mDSecurityTradingStatus < 0 || sbe_55.mDSecurityTradingStatus > 103) {
+        //     std::cerr << "\n[WARN] Invalid mDSecurityTradingStatus: " << static_cast<int>(sbe_55.mDSecurityTradingStatus) << std::endl;
+        // }
 
         sbe_55.appID = extract_field<int16_t>(packet_data, offset);
         sbe_55.marketSegmentID = extract_field<uint8_t>(packet_data, offset);
@@ -421,9 +445,10 @@ public:
 
         sbe_55.securityID = extract_field<int32_t>(packet_data, offset);
         sbe_55.securityIDSource = extract_field<int8_t>(packet_data, offset);
-        if (sbe_55.securityIDSource != '8') { // '8' is the expected value for CME
-            std::cerr << "\n[WARN] Invalid securityIDSource: " << static_cast<int>(sbe_55.securityIDSource) << std::endl;
-        }
+        // if (sbe_55.securityIDSource != '8') { // '8' is the expected value for CME
+        //     std::cerr << "\n[WARN] Invalid securityIDSource: " << static_cast<int>(sbe_55.securityIDSource) << std::endl;
+        //     logger_.log(Logger::WARNING,"Invalid securityIDSource: " + static_cast<int>(sbe_55.securityIDSource));
+        // }
 
         sbe_55.securityType = extract_fixed_length_string(6, packet_data, offset);
         sbe_55.cFICode = extract_fixed_length_string(6, packet_data, offset);
@@ -434,9 +459,9 @@ public:
         }
 
         sbe_55.maturityMonthYear = extract_fixed_length_string(5, packet_data, offset);
-        if (sbe_55.maturityMonthYear.length() < 4 || !std::isdigit(sbe_55.maturityMonthYear[0])) {
-            std::cerr << "\n[WARN] Invalid maturityMonthYear: " << sbe_55.maturityMonthYear << std::endl;
-        }
+        // if (sbe_55.maturityMonthYear.length() < 4 || !std::isdigit(sbe_55.maturityMonthYear[0])) {
+        //     std::cerr << "\n[WARN] Invalid maturityMonthYear: " << sbe_55.maturityMonthYear << std::endl;
+        // }
 
         sbe_55.currency = extract_fixed_length_string(3, packet_data, offset);
 
@@ -452,34 +477,96 @@ public:
             sbe_55.minCabPrice = 0; // Handle null value
         }
 
+        sbe_55.matchAlgorithm = extract_field<char>(packet_data, offset);
+        sbe_55.minTradeVol = extract_field<uint32_t>(packet_data, offset);
+        sbe_55.maxTradeVol = extract_field<uint32_t>(packet_data, offset);
+        sbe_55.minPriceIncrement = extract_field<int64_t>(packet_data, offset); // PRICENULL9
+        sbe_55.minPriceIncrementAmount = extract_field<int64_t>(packet_data, offset); // PRICENULL9
+        sbe_55.displayFactor = extract_field<float>(packet_data, offset); // Decimal9
+        sbe_55.tickRule = extract_field<int8_t>(packet_data, offset); // Int8NULL
+        sbe_55.mainFraction = extract_field<uint8_t>(packet_data, offset); // uInt8NULL
+        sbe_55.subFraction = extract_field<uint8_t>(packet_data, offset); // uInt8NULL
+        sbe_55.priceDisplayFormat = extract_field<uint8_t>(packet_data, offset); // uInt8NULL
+        sbe_55.unitOfMeasure = extract_fixed_length_string(30, packet_data, offset); // String (max 30 bytes)
+        sbe_55.unitOfMeasureQty = extract_field<float>(packet_data, offset); // Decimal9NULL
+        sbe_55.tradingReferencePrice = extract_field<int64_t>(packet_data, offset); // PRICENULL9
+        sbe_55.settlPriceType = extract_field<uint8_t>(packet_data, offset); // MultipleCharValue
+        sbe_55.clearedVolume = extract_field<int32_t>(packet_data, offset); // Int32NULL
+        sbe_55.openInterestQty = extract_field<int32_t>(packet_data, offset); // Int32NULL
+        sbe_55.lowLimitPrice = extract_field<int64_t>(packet_data, offset); // PRICENULL9
+        sbe_55.highLimitPrice = extract_field<int64_t>(packet_data, offset); // PRICENULL9
+        sbe_55.userDefinedInstrument = extract_field<uint8_t>(packet_data, offset); // char (Y/N)
+        sbe_55.tradingReferenceDate = extract_field<uint16_t>(packet_data, offset); // LocalMktDate
+        sbe_55.instrumentGUID = extract_field<uint64_t>(packet_data, offset);
+
         // DEBUG to INFO
         if(logger_.is_level_enabled(Logger::FOCUS)) {
             std::cout << "\n[DEBUG] ==== 55 Message ==== [DEBUG]" << std::endl;
 
             debug_field("matchEventIndicator", sbe_55.matchEventIndicator);
             debug_field("totNumReports", sbe_55.totNumReports);
-            debug_field("securityUpdateAction", sbe_55.securityUpdateAction);
+            debug_field("securityUpdateAction", static_cast<char>(sbe_55.securityUpdateAction));
             debug_field("lastUpdateTime", sbe_55.lastUpdateTime);
             debug_field("mDSecurityTradingStatus", sbe_55.mDSecurityTradingStatus);
             debug_field("appID", sbe_55.appID);
             debug_field("marketSegmentID", sbe_55.marketSegmentID);
             debug_field("underlyingProduct", sbe_55.underlyingProduct);
             debug_field("securityExchange", sbe_55.securityExchange);
-            debug_field("securityGroup", sbe_55.securityGroup);
-            debug_field("asset", sbe_55.asset);
-            debug_field("symbol", sbe_55.symbol);
-            debug_field("securityID",sbe_55.securityID);
-            debug_field("securityIDSource",sbe_55.securityIDSource);
-            debug_field("securityType",sbe_55.securityType);
-            debug_field("cFICode",sbe_55.cFICode);
-            debug_field("putOrCall",sbe_55.putOrCall);
-            debug_field("maturityMonthYear",sbe_55.maturityMonthYear);
-            debug_field("currency",sbe_55.currency);
+            debug_string_with_bytes("securityGroup", sbe_55.securityGroup);
+            debug_string_with_bytes("asset", sbe_55.asset);
+            debug_string_with_bytes("symbol", sbe_55.symbol);
+            debug_field("securityID", sbe_55.securityID);
+            debug_field("securityIDSource", static_cast<char>(sbe_55.securityIDSource));
+            debug_string_with_bytes("securityType", sbe_55.securityType);
+            debug_string_with_bytes("cFICode", sbe_55.cFICode);
+            debug_field("putOrCall", sbe_55.putOrCall);
+            debug_string_with_bytes("maturityMonthYear", sbe_55.maturityMonthYear);
+            debug_string_with_bytes("currency", sbe_55.currency);
             debug_price_with_exponent("strikePrice", sbe_55.strikePrice, -9);
-            debug_field("strikeCurrency",sbe_55.strikeCurrency);
-            debug_field("settlCurrency",sbe_55.settlCurrency);
+            debug_string_with_bytes("strikeCurrency", sbe_55.strikeCurrency);
+            debug_string_with_bytes("settlCurrency", sbe_55.settlCurrency);
             debug_price_with_exponent("minCabPrice", sbe_55.minCabPrice, -9);
-            debug_field()
+            debug_field("matchAlgorithm", sbe_55.matchAlgorithm);
+            debug_field("minTradeVol", sbe_55.minTradeVol);
+            debug_field("maxTradeVol", sbe_55.maxTradeVol);
+            debug_price_with_exponent("minPriceIncrement", sbe_55.minPriceIncrement, -9);
+            debug_price_with_exponent("minPriceIncrementAmount", sbe_55.minPriceIncrementAmount, -9);
+            debug_field("displayFactor", sbe_55.displayFactor);
+            debug_field("tickRule", sbe_55.tickRule);
+            debug_field("mainFraction", sbe_55.mainFraction);
+            debug_field("subFraction", sbe_55.subFraction);
+            debug_field("priceDisplayFormat", sbe_55.priceDisplayFormat);
+            debug_string_with_bytes("unitOfMeasure", sbe_55.unitOfMeasure);
+            debug_field("unitOfMeasureQty", sbe_55.unitOfMeasureQty);
+            debug_price_with_exponent("tradingReferencePrice", sbe_55.tradingReferencePrice, -9);
+            debug_field("settlPriceType", sbe_55.settlPriceType);
+            debug_field("clearedVolume", sbe_55.clearedVolume);
+            debug_field("openInterestQty", sbe_55.openInterestQty);
+            debug_price_with_exponent("lowLimitPrice", sbe_55.lowLimitPrice, -9);
+            debug_price_with_exponent("highLimitPrice", sbe_55.highLimitPrice, -9);
+            debug_field("userDefinedInstrument", sbe_55.userDefinedInstrument);
+            debug_field("tradingReferenceDate", sbe_55.tradingReferenceDate);
+            debug_field("instrumentGUID",sbe_55.instrumentGUID);
+        }
+
+        // Parse the number of entries in the NoEvents group
+        uint8_t noEventsCount = extract_field<uint8_t>(packet_data, offset);
+        // print_uint8_info(noEventsCount);
+        debug_field("noEventsCount: ",noEventsCount);
+
+        // debug_field(noEventsCount);
+
+        std::vector<std::pair<int, uint64_t>> events; // Store parsed events
+        for (uint8_t i = 0; i < noEventsCount; ++i) {
+            int eventType = extract_field<int8_t>(packet_data, offset); // Parse EventType
+            uint64_t eventTime = extract_field<uint64_t>(packet_data, offset); // Parse EventTime
+            events.emplace_back(eventType, eventTime); // Store event data
+        }
+
+        // Debugging and validation
+        for (const auto& [eventType, eventTime] : events) {
+            debug_field("EventType", eventType);
+            debug_field("EventTime", eventTime);
         }
 
         std::vector<std::string> row;
