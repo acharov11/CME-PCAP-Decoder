@@ -1,124 +1,70 @@
 //
-// Created by hruks on 11/17/2024.
+// Created by hruks on 11/26/2024.
 //
 
-#include "fast_cme_parser.h"
 
-#include "MDIncrementalRefreshOrderBook47.h"
-
-
-
-#include <iostream>
-#include <fstream>
-#include <sstream>
+#include "src/tests/TestParser.h"
+#include "src/exchanges/cme/CMEParser.h"
 #include <vector>
-#include <ctime>
-#include <cmath>
-#include <cstdint>
-#include <cstring>
-#include <iomanip>
-#include <string>
+#include <iostream>
 
-class CMEOrderBookDecoder {
-private:
-    std::ofstream csv_file;
-
-    // Helper function to convert timestamp to human readable format
-    std::string formatTimestamp(uint64_t nanoseconds) {
-        time_t seconds = nanoseconds / 1000000000;
-        auto ms = (nanoseconds % 1000000000) / 1000000;
-        char buffer[30];
-        struct tm* timeinfo = localtime(&seconds);
-        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
-        std::stringstream ss;
-        ss << buffer << "." << std::setfill('0') << std::setw(3) << ms;
-        return ss.str();
-    }
-
-public:
-    CMEOrderBookDecoder(const std::string& output_file) {
-        csv_file.open(output_file);
-        writeHeader();
-    }
-
-    ~CMEOrderBookDecoder() {
-        if (csv_file.is_open()) {
-            csv_file.close();
-        }
-    }
-
-    void writeHeader() {
-        csv_file << "Timestamp,SecurityID,OrderID,Price,Quantity,Side,UpdateAction,Priority\n";
-    }
-
-    void decode(const char* buffer, size_t length) {
-        MDIncrementalRefreshOrderBook47Decoder decoder;
-        decoder.wrapForDecode(buffer, 0, decoder.sbeBlockLength(), decoder.sbeSchemaVersion());
-
-        // Get message header information
-        uint64_t transactTime = decoder.transactTime();
-        std::string formattedTime = formatTimestamp(transactTime);
-
-        // Process all entries in the message
-        auto& entries = decoder.noMDEntries();
-        while (entries.hasNext()) {
-            auto& entry = entries.next();
-
-            // Extract order details
-            uint64_t orderId = entry.orderID();
-            uint64_t priority = entry.mDOrderPriority();
-
-            // Handle price (using PRICE9 format)
-            auto priceData = entry.mDEntryPx();
-            double price = priceData.mantissa() * std::pow(10, priceData.exponent());
-
-            int32_t quantity = entry.mDDisplayQty();
-            int32_t securityId = entry.securityID();
-            auto updateAction = entry.mDUpdateAction();
-            auto entryType = entry.mDEntryType();
-
-            // Convert update action to string
-            std::string actionStr;
-            switch (updateAction) {
-                case MDUpdateAction::New: actionStr = "NEW"; break;
-                case MDUpdateAction::Change: actionStr = "CHANGE"; break;
-                case MDUpdateAction::Delete: actionStr = "DELETE"; break;
-                default: actionStr = "UNKNOWN";
-            }
-
-            // Convert entry type to side
-            std::string side = (entryType == MDEntryTypeBook::Bid) ? "BID" : "ASK";
-
-            // Write to CSV
-            csv_file << formattedTime << ","
-                    << securityId << ","
-                    << orderId << ","
-                    << std::fixed << std::setprecision(6) << price << ","
-                    << quantity << ","
-                    << side << ","
-                    << actionStr << ","
-                    << priority << "\n";
-        }
-        csv_file.flush();
-    }
-};
-
-// Example usage
 int main() {
-    CMEOrderBookDecoder decoder("orderbook.csv");
+    try {
 
-    // Read your binary file and process it
-    std::ifstream input("mbofd.raw", std::ios::binary);
-    if (input.is_open()) {
-        // Read file in chunks
-        constexpr size_t BUFFER_SIZE = 8192;
-        char buffer[BUFFER_SIZE];
+        // Set I/O
+        string input_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
+        string output_file = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/output/result.csv";
 
-        while (input.read(buffer, BUFFER_SIZE)) {
-            size_t bytesRead = input.gcount();
-            decoder.decode(buffer, bytesRead);
-        }
-        input.close();
+        // Specify allowed template IDs
+        std::set<uint16_t> allowed_templates = {};
+
+        // Specify custom header (OPTIONAL)
+        std::vector<std::string> custom_header = {
+            "PacketNumber", "Timestamp", "msgSeqNum", "sendingTime",
+            "msgSize", "blockLength", "templateID", "schemaID", "version",
+            "transactTime", "matchEventIndicator", "noMDEntries", "numInGroup",
+            "highLimitPrice", "lowLimitPrice"
+        };
+
+        CMEParser parser(input_file, output_file, allowed_templates, custom_header);
+        // parser.process_nth_packet(5);
+        parser.process_packets(1000000, 10000);
+
+        std::cout << std::endl;
+
+        parser.print_message_statistics();
+
+        // // parser.process_nth_packet(10);
+        // parser.process_nth_packet(21);
+
+        // // Test CME Parser
+        // CMEParser cme_parser("cme_output.csv");
+        //
+        // // Dummy CME packet
+        // std::vector<uint8_t> dummy_cme_packet = {
+        //     0x10, 0x00, 0x20, 0x00, 0x32, 0x00, // Header (Message Size, Block Length, Template ID)
+        //     0x50, 0x06, 0x04, 0x03, 0x02, 0x01 // Payload
+        // };
+        //
+        // cme_parser.parse_packet(dummy_cme_packet);
+        // cme_parser.write_to_csv();
+        //
+        // // Test TestParser
+        // TestParser test_parser("test_output.csv");
+        //
+        // // Dummy test packet
+        // std::vector<uint8_t> dummy_test_packet = {
+        //     0x01, 0x02, 0x03, 0x04, // Field1
+        //     0x05, 0x06,             // Field2
+        //     'H', 'e', 'l', 'l', 'o' // Field3
+        // };
+        //
+        // test_parser.parse_packet(dummy_test_packet);
+        // test_parser.write_to_csv();
+
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception: " << e.what() << std::endl;
     }
+
     return 0;
 }
