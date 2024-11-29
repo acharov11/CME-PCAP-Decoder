@@ -9,8 +9,8 @@ std::vector<std::string> CMEParser::parse_payload(const std::vector<uint8_t>& pa
 
     std::vector<std::string> row;
 
-    // Now check whole payload
-    if (packet_data.size() < 42) {
+    // Check for minimum packet size (42 bytes for headers + required payload)
+    if (packet_data.size() < 42 + sizeof(TechnicalHeader)) {
         std::cerr << "Packet too small, skipping.\n";
         row.push_back(std::to_string(packet_number)); // Packet number
         // row.push_back(format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec)); // Timestamp
@@ -19,23 +19,16 @@ std::vector<std::string> CMEParser::parse_payload(const std::vector<uint8_t>& pa
     }
 
     // Parse the packet (we have reached the payload -- at byte 42)
-    std::vector<uint8_t> payload_data(packet_data.begin() + 42, packet_data.end());
+    // std::vector<uint8_t> payload_data(packet_data.begin() + 42, packet_data.end());
+    const std::vector<uint8_t>& payload_data = packet_data;
 
-    if (payload_data.size() < sizeof(TechnicalHeader)) {
-        throw std::runtime_error("Payload data too small to contain TechnicalHeader");
-    }
 
-    size_t offset = 0;
+    size_t offset = 42; // Start after Ethernet header
 
     // Parse Technical Header
     TechnicalHeader tech_header;
     tech_header.msgSeqNum = extract_field<uint32_t>(payload_data, offset, "msgSeqNum");
     tech_header.sendingTime = extract_field<uint64_t>(payload_data, offset, "sendingTime");
-
-    // Ensure sufficient data for CME Message Header
-    if (payload_data.size() < offset + sizeof(CMEMessageHeader)) {
-        throw std::runtime_error("Payload data too small to contain CMEMessageHeader");
-    }
 
     // Parse CME Message Header
     CMEMessageHeader cme_header;

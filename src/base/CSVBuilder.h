@@ -56,6 +56,21 @@ public:
         csv_file_ << "\n";
     }
 
+    // Write a single row to an existing open file stream
+    void write_row(std::ofstream& file_stream, const std::vector<std::string>& row) {
+        if (!file_stream.is_open()) {
+            throw std::runtime_error("File stream is not open!");
+        }
+        for (size_t i = 0; i < row.size(); ++i) {
+            file_stream << row[i];
+            if (i < row.size() - 1) {
+                file_stream << ",";
+            }
+        }
+        file_stream << "\n";
+    }
+
+
     // Write multiple rows to the CSV
     void write_rows(const std::vector<std::vector<std::string>>& rows) {
         for (const auto& row : rows) {

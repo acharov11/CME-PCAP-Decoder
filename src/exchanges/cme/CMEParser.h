@@ -1,5 +1,5 @@
 //
-// Created by hruks on 11/26/2024.
+// Created by Anton Charov on 11/26/2024.
 //
 
 #ifndef CMEPARSER_H
