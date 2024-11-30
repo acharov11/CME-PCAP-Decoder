@@ -45,7 +45,7 @@ int main() {
             "highLimitPrice", "lowLimitPrice"
         };
 
-        // ENABLE DEBUG LEVELS IN ParserBase.cpp CONSTRUCTOR
+
         // Instantiate parser
         NYSEParser nyse_parser(NYSE_FILE_INPUT, NYSE_FILE_OUTPUT, allowed_messages, custom_header);
         nyse_parser.set_log_levels({INFO}); // possible {INFO, DEBUG, WARNING, ERROR, FOCUS, EXTRACT_DEBUG}
@@ -77,7 +77,7 @@ int main() {
         cout << "\nStarting single-threaded processing...";
 
         // RUN YOUR PREFFERED METHODS
-        // nyse_parser.process_nth_packet(2); // NOTE DEBUG and EXTRACT_DEBUG need to be ENABLED in ParserBase.cpp constructor
+        // nyse_parser.process_nth_packet(2);
         nyse_parser.process_packets(total_packets, batch_size, start_packet, end_packet);
 
         cme_parser.process_packets(total_packets, batch_size, start_packet, end_packet);
