@@ -1,5 +1,5 @@
 //
-// Created by hruks on 11/29/2024.
+// Created by Anton Charov on 11/29/2024.
 //
 
 #include "NYSEParser.h"
@@ -13,6 +13,7 @@ NYSEParser::NYSEParser(const std::string& input_file, const std::string& output_
     "msgType", "sourceTimeNS", "symbolIndex", "symbolSeqNum",
     "orderID", "price", "volume","side","firmID","reserved"}
     ) {
+    setBigEndian(false);
 }
 
 std::vector<std::string> NYSEParser::parse_payload(const std::vector<uint8_t>& packet_data,
@@ -22,7 +23,9 @@ std::vector<std::string> NYSEParser::parse_payload(const std::vector<uint8_t>& p
     std::vector<std::string> row;
 
     // Check for minimum packet size (46 bytes for payload)
-    if (packet_data.size() < 46) {
+    const size_t UDP_HEADER_SIZE = 46;
+
+    if (packet_data.size() < UDP_HEADER_SIZE) {
         std::cerr << "Packet too small, skipping.\n";
         row.push_back(std::to_string(packet_number)); // Packet number
         // row.push_back(format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec)); // Timestamp
@@ -34,7 +37,7 @@ std::vector<std::string> NYSEParser::parse_payload(const std::vector<uint8_t>& p
     const std::vector<uint8_t>& payload_data = packet_data;
 
 
-    size_t offset = 46; // Start after Ethernet header
+    size_t offset = UDP_HEADER_SIZE; // Start after Ethernet header
 
     // Parse general NYSE packet header
     NYSEPacketHeader nyse_packet_header;

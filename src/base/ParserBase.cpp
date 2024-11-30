@@ -19,10 +19,11 @@ ParserBase::ParserBase(const std::string& input_file,
 
     write_header(custom_header);
 
-    logger_.enable_level(Logger::INFO);
+    // DEPRECATED: use new set_log_levels method
+    // logger_.enable_level(Logger::INFO);
     // logger_.enable_level(Logger::DEBUG);
     // logger_.enable_level(Logger::EXTRACT_DEBUG);
-    logger_.enable_level(Logger::WARNING);
+    // logger_.enable_level(Logger::WARNING);
     // logger_.enable_level(Logger::ERROR);
 
     logger_.info("Logger initialized for ParserBase");

@@ -38,21 +38,26 @@ class ParserBase {
     // Emulate terminal in the output console checkbox:
 private:
 
-    const int GLOBAL_HEADER_NUM_BYTES_ = 24;
-    const int NUM_RAW_HEX_ROWS_PRINT_ = 5;
-    const int FIELD_NAME_WIDTH_ = 25;  // Width for aligning field names
-    const int VALUE_WIDTH_ = 30;      // Width for aligning field values
-    const bool SHOW_BYTES_ = true;    // Toggle for showing byte representation
-    const bool SPECIAL_FORMATTING_ = true; // Toggle for special formatting of uint8_t and int8_t
-    const int EXTRA_BYTE_PADDING_ = 25;
 
+    const bool SAFE_MODE_PARSE_ = true;         // Should we throw an error if number of parsed bytes doesn't align with data type.
+    const bool SAFE_MODE_ENDIAN_CONVERT_ = true;// Should we throw an error if we get a byte type we can't convert
+    const int GLOBAL_HEADER_NUM_BYTES_ = 24;    // How many bytes to skip of the global heaader
+    const int NUM_RAW_HEX_ROWS_PRINT_ = 5;      // How many rows to print for raw hex debug
+    const int FIELD_NAME_WIDTH_ = 25;           // Width for aligning field names
+    const int VALUE_WIDTH_ = 30;                // Width for aligning field values
+    const bool SHOW_BYTES_ = true;              // Toggle for showing byte representation
+    const bool SPECIAL_FORMATTING_ = true;      // Toggle for special formatting of uint8_t and int8_t
+    const int EXTRA_BYTE_PADDING_ = 25;         // Width for aligning overflowing bytes
 
+    bool BIG_ENDIAN_ = false;                   // Toggle big endian parsing for this parser class (set per child parser)
 
     std::string format_timestamp(uint32_t ts_sec, uint32_t ts_usec);
 
 
     static constexpr size_t average_packet_size_ = 1500; // Adjust based on your needs
     std::atomic<size_t> total_processed_packets_{0};
+
+    std::vector<Logger::LogLevel> enabled_logging_levels_;
 
 protected:
 
@@ -82,17 +87,73 @@ protected:
 
     Logger logger_;
 
+    void setBigEndian(bool value) {
+        BIG_ENDIAN_ = value;
+    }
+
+    // Endian conversion utility -- handles 2 byte, 4 byte, and 8 byte types
+    // Note: strings don't apply since they are treated as a raw byte sequence
+    // Supports both integral and floating-point types
+    template <typename T>
+    inline T convert_endianness(T value) noexcept {
+        static_assert(std::is_arithmetic_v<T>, "Endianness conversion requires an arithmetic type");
+
+        if constexpr (std::is_integral_v<T>) {
+            // Handle integral types
+            if constexpr (sizeof(T) == 1) {
+                // No conversion needed for 1-byte types
+                return value;
+            } else if constexpr (sizeof(T) == 2) {
+                return static_cast<T>((value >> 8) | (value << 8));
+            } else if constexpr (sizeof(T) == 4) {
+                return static_cast<T>(((value >> 24) & 0x000000FF) |
+                                      ((value >> 8) & 0x0000FF00) |
+                                      ((value << 8) & 0x00FF0000) |
+                                      ((value << 24) & 0xFF000000));
+            } else if constexpr (sizeof(T) == 8) {
+                return static_cast<T>(((value >> 56) & 0x00000000000000FFULL) |
+                                      ((value >> 40) & 0x000000000000FF00ULL) |
+                                      ((value >> 24) & 0x0000000000FF0000ULL) |
+                                      ((value >> 8)  & 0x00000000FF000000ULL) |
+                                      ((value << 8)  & 0x000000FF00000000ULL) |
+                                      ((value << 24) & 0x0000FF0000000000ULL) |
+                                      ((value << 40) & 0x00FF000000000000ULL) |
+                                      ((value << 56) & 0xFF00000000000000ULL));
+            } else {
+                if (SAFE_MODE_ENDIAN_CONVERT_)
+                    throw std::runtime_error("Unsupported integral type for endianness conversion");
+            }
+        } else if constexpr (std::is_floating_point_v<T>) {
+            // Handle floating-point types by reinterpreting as an integral type
+            static_assert(sizeof(T) == 4 || sizeof(T) == 8, "Unsupported floating-point type size");
+            using IntType = std::conditional_t<sizeof(T) == 4, uint32_t, uint64_t>;
+
+            IntType int_value;
+            std::memcpy(&int_value, &value, sizeof(T)); // Copy bytes from float/double to integer
+            int_value = convert_endianness(int_value); // Swap bytes as an integer
+            std::memcpy(&value, &int_value, sizeof(T)); // Copy bytes back to float/double
+            return value;
+        }
+    }
+
+
     // Utility to extract fields from binary data
     template <typename T>
     T extract_field(const std::vector<uint8_t>& data, size_t& offset, const std::string& field_name) {
         // Check for enough data
         if (offset + sizeof(T) > data.size()) {
-            throw std::runtime_error("Not enough data to extract field: " + field_name);
+            if(SAFE_MODE_PARSE_)
+                throw std::runtime_error("Not enough data to extract field: " + field_name);
         }
 
         // Directly read the field using pointer arithmetic
         const T* field_ptr = reinterpret_cast<const T*>(&data[offset]);
         T field = *field_ptr; // Dereference to get the value
+
+        // Handle endianness if necessary
+        if (BIG_ENDIAN_ && sizeof(T) > 1) { // Only apply to multi-byte fields
+            field = convert_endianness(field);
+        }
 
         // Move the offset forward
         offset += sizeof(T);
@@ -230,6 +291,14 @@ public:
 
     // Information methods
     void print_message_statistics();
+
+    // Logging methods
+    void set_log_levels(const std::vector<Logger::LogLevel>& levels) {
+        enabled_logging_levels_ = levels;
+        for(const auto& level : enabled_logging_levels_) {
+            logger_.enable_level(level);
+        }
+    }
 };
 
 
