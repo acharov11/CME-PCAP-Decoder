@@ -59,6 +59,16 @@ private:
 
     std::vector<Logger::LogLevel> enabled_logging_levels_;
 
+    const std::vector<std::string> PRL_HEADER_ = {
+        "Packet Capture Time", "Send Time", "Message ID", "Raw Timestamp",
+        "Tick Type", "Symbol", "Price", "Size", "Record Type", "Flag", "ASK"
+    };
+
+    const std::vector<std::string> TRD_HEADER_ = {
+        "Packet Capture Time", "Send Time", "Message ID", "Raw Timestamp",
+        "Tick Type", "Symbol", "Size", "Price", "Trade ID", "Sale Condition"
+    };
+
 protected:
 
     // PCAP Packet Header (16 bytes)
@@ -74,6 +84,12 @@ protected:
     std::set<uint16_t> allowed_message_ids_;   // Allowed Message IDs / Allowed Template IDs
     std::map<uint16_t, size_t> message_count_; // Message ID / Template ID usage count
     CSVBuilder csv_builder_;
+    CSVBuilder prl_csv_builder_;
+    CSVBuilder trd_csv_builder_;
+
+    bool enable_full_writer_;
+    bool enable_prl_writer_;
+    bool enable_trd_writer_;
 
     // Used as default CSV header for X parser
     std::vector<std::string> CUSTOM_HEADER_ = {
@@ -83,10 +99,42 @@ protected:
         "highLimitPrice", "lowLimitPrice"
     };
 
+    // Verify a message fits the PRL style
+    bool is_prl_message(const std::string& symbol, uint32_t volume, char side) {
+        // This logic could change
+        return (symbol == "AAPL" || symbol == "MSFT") && volume > 0 && (side == 'B' || side == 'S');
+    }
+
+    // Method to handle PRL row construction and writing
+    void add_to_prl(const std::string& packet_capture_time,
+                const std::string& send_time,
+                uint32_t message_id,
+                const std::string& raw_timestamp,
+                const std::string& tick_type,
+                const std::string& symbol,
+                double price,
+                uint32_t size,
+                const std::string& record_type,
+                uint8_t flag,
+                bool ask);
+
+    // Method to handle TRD row construction and writing
+    void add_to_trd(const std::string& packet_capture_time,
+                const std::string& send_time,
+                uint32_t message_id,
+                const std::string& raw_timestamp,
+                const std::string& tick_type,
+                const std::string& symbol,
+                uint32_t size,
+                double price,
+                uint32_t trade_id,
+                const std::string& sale_condition);
+
     std::mutex csv_mutex; // Mutex for thread-safe CSV writing
 
     Logger logger_;
 
+    // Updat endian type
     void setBigEndian(bool value) {
         BIG_ENDIAN_ = value;
     }
@@ -257,6 +305,11 @@ protected:
 public:
     ParserBase(const std::string& input_file,
         const std::string& output_file,
+        bool enable_full_writer = true,
+        const std::string& prl_output_file = "results_PRL.csv",
+        bool enable_prl_writer = true,
+        const std::string& trd_output_file = "results_TRD.csv",
+        bool enable_trd_writer = true,
         const std::set<uint16_t>& allowed_messages = {},
         const std::vector<std::string>& custom_header = {},
         const std::string& log_file = "parser.log");

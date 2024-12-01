@@ -28,11 +28,24 @@ int main() {
         const string& CME_FILE_INPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/data/dc3-glbx-a-20230716T110000.pcap";
         const string& NASDAQ_FILE_INPUT = "";
         const string& CBOE_FILE_INPUT = "";
+
         // Set your outputs
         const string& NYSE_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/nyse/output/results.csv";
         const string& CME_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/cme/output/results.csv";
-        const string& NASDAQ_FILE_OUTPUT = "";
-        const string& CBOE_FILE_OUTPUT = "";
+        const string& NASDAQ_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/nasdaq/output/results.csv";
+        const string& CBOE_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/cboe/output/results.csv";
+
+        // Set your PRL outputs
+        const string& NYSE_PRL_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/nyse/output/results_PRL.csv";
+        const string& CME_PRL_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/cme/output/results_PRL.csv";
+        const string& NASDAQ_PRL_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/nasdaq/output/results_PRL.csv";
+        const string& CBOE_PRL_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/cboe/output/results_PRL.csv";
+
+        // Set your TRD outputs
+        const string& NYSE_TRD_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/nyse/output/results_TRD.csv";
+        const string& CME_TRD_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/cme/output/results_TRD.csv";
+        const string& NASDAQ_TRD_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/nasdaq/output/results_TRD.csv";
+        const string& CBOE_TRD_FILE_OUTPUT = "C:/data/dev/OneTickPersonal/CMEDecoder/PCAPParser/src/exchanges/cboe/output/results_TRD.csv";
 
         // Specify allowed template / message IDs -- empty means all enabled
         std::set<uint16_t> allowed_messages = {};
@@ -47,17 +60,35 @@ int main() {
 
 
         // Instantiate parser
-        NYSEParser nyse_parser(NYSE_FILE_INPUT, NYSE_FILE_OUTPUT, allowed_messages, custom_header);
+        NYSEParser nyse_parser(NYSE_FILE_INPUT,
+            NYSE_FILE_OUTPUT,true,
+            NYSE_PRL_FILE_OUTPUT,true,
+            NYSE_TRD_FILE_OUTPUT, true,
+            allowed_messages, custom_header);
         nyse_parser.set_log_levels({INFO}); // possible {INFO, DEBUG, WARNING, ERROR, FOCUS, EXTRACT_DEBUG}
-        CMEParser cme_parser(CME_FILE_INPUT, CME_FILE_OUTPUT, allowed_messages, custom_header);
+
+        CMEParser cme_parser(CME_FILE_INPUT,
+            CME_FILE_OUTPUT, true,
+            CME_PRL_FILE_OUTPUT, true,
+            CME_TRD_FILE_OUTPUT, true,
+            allowed_messages, custom_header);
         cme_parser.set_log_levels({INFO}); // possible {INFO, DEBUG, WARNING, ERROR, FOCUS, EXTRACT_DEBUG}
-        // NASDAQParser nasdaq_parser(NASDAQ_FILE_INPUT, NASDAQ_FILE_OUTPUT, allowed_messages, custom_header);
+
+        // NASDAQParser nasdaq_parser(NASDAQ_FILE_INPUT, NASDAQ_FILE_OUTPUT, true,
+        //     NASDAQ_PRL_FILE_OUTPUT, true,
+        //     NASDAQ_TRD_FILE_OUTPUT, true,
+        //     allowed_messages, custom_header);
         // nasdaq_parser.set_log_levels({INFO}); // possible {INFO, DEBUG, WARNING, ERROR, FOCUS, EXTRACT_DEBUG}
-        // CBOEParser cboe_parser(CBOE_FILE_INPUT, CBOE_FILE_OUTPUT, allowed_messages, custom_header);
+        //
+        // CBOEParser cboe_parser(CBOE_FILE_INPUT,
+        //     CBOE_FILE_OUTPUT, true,
+        //     CBOE_PRL_FILE_OUTPUT, true,
+        //     CBOE_TRD_FILE_OUTPUT, true,
+        //     allowed_messages, custom_header);
         // cboe_parser.set_log_levels({INFO}); // possible {INFO, DEBUG, WARNING, ERROR, FOCUS, EXTRACT_DEBUG}
 
         // Initial params
-        constexpr size_t total_packets = 10000000;
+        constexpr size_t total_packets = 100000;
         constexpr size_t batch_size = 25000;
         constexpr size_t start_packet = 1;
         constexpr size_t end_packet = 0;

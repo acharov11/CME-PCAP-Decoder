@@ -4,9 +4,23 @@
 
 #include "NYSEParser.h"
 
-NYSEParser::NYSEParser(const std::string& input_file, const std::string& output_file, const std::set<uint16_t>& allowed_messages, const std::vector<std::string>& custom_header)
+NYSEParser::NYSEParser(
+    const std::string& input_file,
+    const std::string& output_file,
+    bool enable_full_writer,
+    const std::string& prl_output_file,
+    bool enable_prl_writer,
+    const std::string& trd_output_file,
+    bool enable_trd_writer,
+    const std::set<uint16_t>& allowed_messages,
+    const std::vector<std::string>& custom_header)
 : ParserBase(input_file,
     output_file,
+    enable_full_writer,
+    prl_output_file,
+    enable_prl_writer,
+    trd_output_file,
+    enable_trd_writer,
     allowed_messages,
     {        "PacketNumber", "Timestamp", "pktSize", "deliveryFlag",
     "numberMsgs", "seqNum", "sendTime", "sendTimeNS", "msgSize",
@@ -625,6 +639,28 @@ parse_message_100_addOrderMessage(const std::vector<uint8_t> &data, size_t &offs
     message_100.side = extract_field<char>(data, offset, "side");
     std::string firmID = extract_fixed_length_string(5, data, offset, "firmID");
     message_100.reserved = extract_field<uint8_t>(data, offset, "reserved");
+
+    // Convert fields as needed for PRL
+    std::string symbol = "AAPL"; // Example symbol resolution from `symbolIndex`
+    double price = message_100.price / 1000000.0; // Example scaling
+    std::string tick_type = "PRL"; // Static example for PRL
+
+    // Add to PRL if criteria match -- rough draft
+    // if (is_prl_message(symbol, message_100.volume, message_100.side)) {
+    add_to_prl(
+        std::to_string(message_100.sourceTimeNS), // Packet capture time
+        std::to_string(message_100.sourceTimeNS), // Send time
+        100,                                      // Message ID
+        std::to_string(message_100.sourceTimeNS), // Raw timestamp
+        tick_type,
+        symbol,
+        price,
+        message_100.volume,
+        "R",                                      // Record type
+        1,                                        // Flag
+        (message_100.side == 'B')                 // ASK
+    );
+    // }
 
     // Build the row for the CSV
     return {

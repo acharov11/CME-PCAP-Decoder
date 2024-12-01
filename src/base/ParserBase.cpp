@@ -7,14 +7,24 @@
 #include <unordered_map>
 
 ParserBase::ParserBase(const std::string& input_file,
-                       const std::string& output_file,
+                        const std::string& output_file,
+                        bool enable_full_writer,
+                        const std::string& prl_output_file,
+                        bool enable_prl_writer,
+                        const std::string& trd_output_file,
+                        bool enable_trd_writer,
                        const std::set<uint16_t>& allowed_messages,
                        const std::vector<std::string>& custom_header,
                        const std::string& log_file)
     : input_file_(input_file),
     output_file_(output_file),
+    csv_builder_(output_file), // Regular CSV builder
+    enable_full_writer_(enable_full_writer),
+    prl_csv_builder_(prl_output_file), // Initialize PRL CSV Builder
+    enable_prl_writer_(enable_prl_writer),
+    trd_csv_builder_(trd_output_file), // Intialize TRD CSV Builder
+    enable_trd_writer_(enable_trd_writer),
     allowed_message_ids_(allowed_messages),
-    csv_builder_(output_file),
     logger_(false, log_file) {
 
     write_header(custom_header);
@@ -30,11 +40,19 @@ ParserBase::ParserBase(const std::string& input_file,
 }
 
 void ParserBase::write_header(const std::vector<std::string>& custom_header) {
-    if (!custom_header.empty()) {
-        csv_builder_.write_row(custom_header);
-    } else {
-        std::vector<std::string> default_header = CUSTOM_HEADER_;
-        csv_builder_.write_row(default_header);
+    if(enable_full_writer_) {
+        if (!custom_header.empty()) {
+            csv_builder_.write_row(custom_header);
+        } else {
+            std::vector<std::string> default_header = CUSTOM_HEADER_;
+            csv_builder_.write_row(default_header);
+        }
+    }
+    if(enable_prl_writer_) {
+        prl_csv_builder_.write_row(PRL_HEADER_);
+    }
+    if(enable_trd_writer_) {
+        trd_csv_builder_.write_row(TRD_HEADER_);
     }
 }
 
@@ -46,6 +64,71 @@ void ParserBase::print_message_statistics() {
     }
     logger_.info(message_debug_stream.str());
 }
+
+void ParserBase::add_to_prl(const std::string& packet_capture_time,
+                const std::string& send_time,
+                uint32_t message_id,
+                const std::string& raw_timestamp,
+                const std::string& tick_type,
+                const std::string& symbol,
+                double price,
+                uint32_t size,
+                const std::string& record_type,
+                uint8_t flag,
+                bool ask) {
+    if(!enable_prl_writer_) {
+        return;
+    }
+    // Construct the PRL row
+    std::vector<std::string> prl_row = {
+        packet_capture_time,
+        send_time,
+        std::to_string(message_id),
+        raw_timestamp,
+        tick_type,
+        symbol,
+        std::to_string(price),
+        std::to_string(size),
+        record_type,
+        std::to_string(flag),
+        std::to_string(ask)
+    };
+
+    // Write to PRL CSV
+    prl_csv_builder_.write_row(prl_row);
+}
+
+void ParserBase::add_to_trd(const std::string& packet_capture_time,
+            const std::string& send_time,
+            uint32_t message_id,
+            const std::string& raw_timestamp,
+            const std::string& tick_type,
+            const std::string& symbol,
+            uint32_t size,
+            double price,
+            uint32_t trade_id,
+            const std::string& sale_condition) {
+    if(!enable_trd_writer_) {
+        return;
+    }
+    // Construct the TRD row
+    std::vector<std::string> trd_row = {
+        packet_capture_time,
+        send_time,
+        std::to_string(message_id),
+        raw_timestamp,
+        tick_type,
+        symbol,
+        std::to_string(size),
+        std::to_string(price),
+        std::to_string(trade_id),
+        sale_condition
+    };
+
+    // Write to TRD CSV
+    trd_csv_builder_.write_row(trd_row);
+}
+
 
 void ParserBase::process_packets(size_t total_packets, size_t batch_size, size_t start_packet, size_t end_packet) {
     // Start timing
@@ -115,23 +198,27 @@ void ParserBase::process_packets(size_t total_packets, size_t batch_size, size_t
         try {
             std::vector<std::string> row = parse_payload(packet_data, current_packet, pcap_header);
             // add packet number and timestamp before packet -- packet metadata
-            if (!row.empty()) {// Only add rows for allowed templates
-                row.insert(row.begin(),{
-                    std::to_string(current_packet), // Packet num
-                    format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec) // Time stamp
-                });
-                batch_data.push_back(row);
+            if (enable_full_writer_) {
+                if (!row.empty()) {// Only add rows for allowed templates
+                    row.insert(row.begin(),{
+                        std::to_string(current_packet), // Packet num
+                        format_timestamp(pcap_header.ts_sec, pcap_header.ts_usec) // Time stamp
+                    });
+                    batch_data.push_back(row);
+                }
             }
         } catch (const std::exception& e) {
             logger_.error("Failed to process packet " + std::to_string(current_packet) + ": " + e.what());
         }
 
         // Write batch to CSV
-        if (batch_data.size() >= batch_size) {
-            ++batches;
-            logger_.info("Finished batch number " + std::to_string(batches) + " and processed " + std::to_string(processed_packets+1) + " packets.");
-            csv_builder_.write_rows(batch_data);
-            batch_data.clear();
+        if (enable_full_writer_) {
+            if (batch_data.size() >= batch_size) {
+                ++batches;
+                logger_.info("Finished batch number " + std::to_string(batches) + " and processed " + std::to_string(processed_packets+1) + " packets.");
+                csv_builder_.write_rows(batch_data);
+                batch_data.clear();
+            }
         }
 
         ++current_packet;
@@ -139,9 +226,11 @@ void ParserBase::process_packets(size_t total_packets, size_t batch_size, size_t
     }
 
     // Write remaining rows
-    if (!batch_data.empty()) {
-        logger_.info("Processing remaining " + std::to_string(batch_data.size()) + " packets.");
-        csv_builder_.write_rows(batch_data);
+    if (enable_full_writer_) {
+        if (!batch_data.empty()) {
+            logger_.info("Processing remaining " + std::to_string(batch_data.size()) + " packets.");
+            csv_builder_.write_rows(batch_data);
+        }
     }
 
     input_file.close();
@@ -644,7 +733,8 @@ void ParserBase::process_nth_packet(size_t packet_number) {
 
     std::vector<std::string> row = parse_payload(packet_data, packet_number, pcap_header);
     if (!row.empty()) {
-        csv_builder_.write_row(row);
+        if (enable_full_writer_)
+            csv_builder_.write_row(row);
     }
 
 

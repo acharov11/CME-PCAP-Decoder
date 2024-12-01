@@ -35,9 +35,16 @@ private:
 
 
 public:
-    CBOEParser(const std::string& input_file, const std::string& output_file,
-              const std::set<uint16_t>& allowed_messaeges = {},
-              const std::vector<std::string>& custom_header = {});
+    CBOEParser(
+        const std::string& input_file,
+        const std::string& output_file,
+        bool enable_full_writer = true,
+        const std::string& prl_output_file = "results_PRL.csv",
+        bool enable_prl_writer = true,
+        const std::string& trd_output_file = "results_TRD.csv",
+        bool enable_trd_writer = true,
+        const std::set<uint16_t>& allowed_messages = {},
+        const std::vector<std::string>& custom_header = {});
 
     ~CBOEParser() override = default;
 

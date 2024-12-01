@@ -4,9 +4,23 @@
 
 #include "CBOEParser.h"
 
-CBOEParser::CBOEParser(const std::string& input_file, const std::string& output_file, const std::set<uint16_t>& allowed_messages, const std::vector<std::string>& custom_header)
+CBOEParser::CBOEParser(
+    const std::string& input_file,
+    const std::string& output_file,
+    bool enable_full_writer,
+    const std::string& prl_output_file,
+    bool enable_prl_writer,
+    const std::string& trd_output_file,
+    bool enable_trd_writer,
+    const std::set<uint16_t>& allowed_messages,
+    const std::vector<std::string>& custom_header)
 : ParserBase(input_file,
     output_file,
+    enable_full_writer,
+    prl_output_file,
+    enable_prl_writer,
+    trd_output_file,
+    enable_trd_writer,
     allowed_messages,
     {        "PacketNumber", "Timestamp", "pktSize", "deliveryFlag",
     "numberMsgs", "seqNum", "sendTime", "sendTimeNS", "msgSize",
